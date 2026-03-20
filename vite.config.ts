@@ -7,10 +7,12 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath, URL } from 'node:url';
 
-const backendTarget = 'http://127.0.0.1:5000';
-
 export default defineConfig(({ mode }) => {
   loadEnv(mode, process.cwd(), 'VITE_');
+  
+  // Only configure proxy if backend URL is provided
+  const backendUrl = process.env.VITE_API_BASE_URL || 'http://127.0.0.1:5000';
+  const enableProxy = !!process.env.VITE_API_BASE_URL;
 
   return {
     plugins: [react()],
@@ -22,18 +24,18 @@ export default defineConfig(({ mode }) => {
     server: {
       host: '0.0.0.0',
       port: 5173,
-      proxy: {
+      proxy: enableProxy ? {
         '/api': {
-          target: backendTarget,
+          target: backendUrl,
           changeOrigin: true,
           secure: false,
         },
         '/oauth': {
-          target: backendTarget,
+          target: backendUrl,
           changeOrigin: true,
           secure: false,
         },
-      },
+      } : {},
     },
   };
 });
