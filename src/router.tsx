@@ -68,6 +68,7 @@ const PurchaseOrdersPage = lazyPage(() => import('@/pages/PurchaseOrders'));
 const PurchaseOrderDetailPage = lazyPage(() => import('@/pages/PurchaseOrderDetail'));
 const PurchaseOrderCreatePage = lazyPage(() => import('@/pages/PurchaseOrderCreate'));
 const PurchaseOrderEditPage = lazyPage(() => import('@/pages/PurchaseOrderEdit'));
+const ApiValidationPage = lazyPage(() => import('@/pages/ApiValidation'));
 
 function RouterRoot() {
   return <Outlet />;
@@ -123,6 +124,7 @@ export const router = createBrowserRouter([
               { path: '/payments', element: <PaymentsPage /> },
               { path: '/kyc', element: <KycPage /> },
               { path: '/developer', element: <DeveloperPage /> },
+              { path: '/api-validation', element: <ApiValidationPage /> },
               { path: '/marketplace', element: <MarketplacePage /> },
               { path: '/chain', element: <ChainPage /> },
               { path: '/whatsapp', element: <WhatsAppPage /> },
