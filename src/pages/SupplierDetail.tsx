@@ -23,6 +23,7 @@ import type { PurchaseOrder } from '@/api/purchaseOrders';
 import { formatCurrency } from '@/utils/numbers';
 import { formatDate } from '@/utils/dates';
 import { normalizeApiError } from '@/utils/errors';
+import type { ApiError } from '@/types/api';
 
 export default function SupplierDetailPage() {
   const { supplierId } = useParams<{ supplierId: string }>();
@@ -84,7 +85,12 @@ export default function SupplierDetailPage() {
     },
   ];
 
-      render: (order) => (
+  // Order columns
+  const orderColumns: Column<PurchaseOrder>[] = [
+    {
+      key: 'purchase_order_id',
+      header: 'PO Number',
+      render: (order: PurchaseOrder) => (
         <Button
           variant="secondary"
           onClick={() => navigate(`/purchase-orders/${order.purchase_order_id}`)}
@@ -96,7 +102,7 @@ export default function SupplierDetailPage() {
     {
       key: 'status',
       header: 'Status',
-      render: (order) => (
+      render: (order: PurchaseOrder) => (
         <Badge variant={
           order.status === 'RECEIVED' ? 'success' :
           order.status === 'CONFIRMED' ? 'info' :
@@ -111,22 +117,22 @@ export default function SupplierDetailPage() {
     {
       key: 'order_date',
       header: 'Order Date',
-      render: (order) => formatDate(order.order_date),
+      render: (order: PurchaseOrder) => formatDate(order.order_date),
     },
     {
       key: 'expected_delivery_date',
       header: 'Expected Delivery',
-      render: (order) => order.expected_delivery_date ? formatDate(order.expected_delivery_date) : '-',
+      render: (order: PurchaseOrder) => order.expected_delivery_date ? formatDate(order.expected_delivery_date) : '-',
     },
     {
       key: 'total_amount',
       header: 'Total Amount',
-      render: (order) => formatCurrency(order.total_amount),
+      render: (order: PurchaseOrder) => formatCurrency(order.total_amount),
     },
     {
       key: 'final_amount',
       header: 'Final Amount',
-      render: (order) => formatCurrency(order.final_amount),
+      render: (order: PurchaseOrder) => formatCurrency(order.final_amount),
     },
   ];
 
