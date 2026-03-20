@@ -1,0 +1,756 @@
+You are a principal frontend engineer. The document above is the Oracle Document —
+a complete forensic audit of the backend API you are about to build against.
+It is your only source of truth. Every field name, every validation rule, every
+error code, every enum value in your output must come from it.
+
+Your mission is to produce a complete, production-quality React + TypeScript SaaS
+frontend — real, compilable code, zero placeholders, zero pseudocode, zero TODOs
+in critical paths — that a developer can clone, run `npm install && npm run dev`,
+and have a working application connected to the backend.
+
+══════════════════════════════════════════════════════════════════
+PHASE 0 — ORACLE READING PASS  (think, do not write output yet)
+══════════════════════════════════════════════════════════════════
+
+Before writing a single line of code, perform a complete silent reading of the
+Oracle Document. Extract and hold in working memory:
+
+1. From SECTION 1:
+   - The application's purpose, user types, and primary journeys.
+   - Every environment variable marked [FRONTEND MUST SET] — these become your
+     `.env.example` file. Do not invent variables not listed.
+   - All libraries with frontend implications (WebSocket, Stripe, OAuth, etc.).
+
+2. From SECTION 2:
+   - The EXACT auth mechanism: token type, storage location, header format.
+   - Whether `withCredentials: true` is required (cookie auth) or not (bearer token).
+   - The EXACT refresh endpoint path and request/response shape.
+   - Every role in the permission matrix. Map each to which routes/UI elements it gates.
+   - The EXACT 401 and 403 response body shapes for your `normalizeApiError` helper.
+
+3. From SECTION 3 — for every endpoint:
+   - Categorize by resource group (these become your `src/api/` files).
+   - Note every endpoint with `Async Pattern: Starts background job` — these need
+     polling hooks, not simple query hooks.
+   - Note every endpoint with non-JSON `Response Content-Type` — these need
+     blob-handling in the API layer, not JSON parsing.
+   - Note every `Idempotency` field — these inform your retry policy in the Axios client.
+   - Identify the complete set of form surfaces (endpoints that accept POST/PUT/PATCH
+     with a Request Body) — these become your Zod schemas.
+   - Identify every destructive action (DELETE or irreversible mutations) — these
+     need confirmation dialogs.
+
+4. From SECTION 4:
+   - Every enum and its values — these become TypeScript union types and Zod enums.
+   - Every model marked as having migration/compatibility notes — flag these in code
+     comments so future developers know about the legacy behavior.
+   - Which fields are serializer-hidden and therefore NOT in API responses — do not
+     generate TypeScript properties for these.
+
+5. From SECTION 5:
+   - The pagination pattern (exact parameter names, exact response envelope shape).
+   - The EXACT universal error envelope — your `ApiError` type and `normalizeApiError`
+     function must handle every variant documented.
+   - Date/time serialization format and timezone convention — these inform your
+     date utility helpers.
+   - Numeric precision rules — if money is involved, flag whether `decimal.js` is needed.
+   - Idempotency header name if documented — wire this into the Axios client.
+   - Correlation/request-ID header if documented — capture it in error objects.
+   - Every inbound webhook and its async window — these inform polling strategy
+     and UX copy for "processing" states.
+
+6. From SECTION 6:
+   - The recommended tech stack. Use it exactly. Do not substitute unless the Oracle
+     Document flags a meaningful reason (e.g., SSR needed → Next.js path documented
+     in 6.4).
+   - The project structure from 6.2 — reproduce it exactly.
+   - The Axios client skeleton from 6.3 — use it as the foundation. Fix any known
+     issues (e.g., concurrent-401 guard, correlation header extraction).
+   - Every Zod schema from 6.5 — reproduce them exactly, they encode the backend
+     validation rules.
+   - Every TypeScript type from 6.6 — reproduce them exactly.
+   - The global optimistic update policy from 6.7.
+
+7. From SECTION 7:
+   - Build an ordered list of all screens. Note dependency order: auth screens first,
+     then any screen that other screens navigate to, then leaf screens.
+   - For every screen, note: route, auth gate, data loading calls, user interactions,
+     and whether it has pagination / real-time / wizard / confirmation subsections.
+
+8. From SECTION 8:
+   - The complete route map.
+   - Whether a `?redirect=` param pattern is required after login.
+
+9. From SECTION 11 — KNOWN RISKS:
+   - Every [HIGH] risk must produce a defensive code comment at the relevant
+     call site. Do not silently ignore them.
+   - Every field flagged as "sometimes null unexpectedly" must use optional chaining
+     in every access site.
+   - Every endpoint flagged as returning "inconsistent shapes" must have a
+     runtime type guard in the API layer function.
+
+If the Oracle Document contains explicit uncertainty markers such as
+"[UNCERTAIN]", "[UNCONFIRMED]", "cannot prove from code", or similar —
+add a `// ⚠️ ORACLE UNCERTAIN: [reason]` comment at every affected code site.
+Do not silently fill in guesses.
+
+Only after completing this full reading pass, begin Phase 1 output.
+
+══════════════════════════════════════════════════════════════════
+PHASE 1 — PROJECT SCAFFOLD
+══════════════════════════════════════════════════════════════════
+
+Output the following files completely. No placeholders. No "fill in later."
+
+─────────────────────────────────────────
+### 1.1 `package.json`
+─────────────────────────────────────────
+
+Use the exact tech stack from Oracle Section 6.1.
+Pin major versions. Include all dependencies, devDependencies, and scripts:
+- `dev`, `build`, `preview`, `type-check`, `lint`
+- If the Oracle Document identifies Stripe: include `@stripe/stripe-js`
+- If the Oracle Document identifies WebSocket: include `socket.io-client`
+- If the Oracle Document identifies money fields: include `decimal.js`
+- If the Oracle Document identifies CSV exports: include `papaparse`
+- Always include: `axios`, `@tanstack/react-query`, `zustand`, `react-hook-form`,
+  `zod`, `@hookform/resolvers`
+
+─────────────────────────────────────────
+### 1.2 `tsconfig.json`
+─────────────────────────────────────────
+
+Strict mode on. `"paths"` aliases that mirror the project structure:
+`@/api/*`, `@/hooks/*`, `@/stores/*`, `@/components/*`, `@/pages/*`,
+`@/types/*`, `@/utils/*`
+
+─────────────────────────────────────────
+### 1.3 `vite.config.ts`
+─────────────────────────────────────────
+
+Configure path aliases to match `tsconfig.json`.
+Configure proxy for `/api` pointing to the local backend port if inferable
+from Oracle Section 1.3 or 5.5 CORS config.
+
+─────────────────────────────────────────
+### 1.4 `.env.example`
+─────────────────────────────────────────
+
+One line per variable marked [FRONTEND MUST SET] in Oracle Section 1.3.
+Include a comment above each explaining what it controls.
+Never include a variable not in the Oracle Document.
+
+─────────────────────────────────────────
+### 1.5 `src/router.tsx`
+─────────────────────────────────────────
+
+Complete React Router v6 route tree.
+Every route from Oracle Section 8.1 must appear.
+Wrap protected routes in `<AuthGuard>`.
+Wrap role-restricted routes in `<RoleGuard role="...">`.
+Include lazy-loaded imports (`React.lazy`) for every page component.
+Include `/404`, `/403`, `/500` fallback routes.
+Include the `?redirect=` preservation pattern from Oracle Section 8.3.
+
+══════════════════════════════════════════════════════════════════
+PHASE 2 — TYPE SYSTEM
+══════════════════════════════════════════════════════════════════
+
+Output these files completely before writing any component or API code.
+Types are the load-bearing foundation. Get them right first.
+
+─────────────────────────────────────────
+### 2.1 `src/types/models.ts`
+─────────────────────────────────────────
+
+One TypeScript `interface` or `type` per data model from Oracle Section 4.1.
+Rules:
+- Fields documented as serializer-hidden (dump_only, excluded) must NOT appear.
+- Fields documented as "sometimes null unexpectedly" must be typed `T | null`.
+- Fields with migration/compatibility notes get a JSDoc `@deprecated` or
+  `/** @legacy - [reason from Oracle] */` comment.
+- Every enum from Oracle Section 4.2 becomes a TypeScript `const` enum or
+  union type AND a corresponding Zod enum in `src/types/schemas.ts`.
+
+─────────────────────────────────────────
+### 2.2 `src/types/api.ts`
+─────────────────────────────────────────
+
+One TypeScript interface per API request body and per API response body
+from Oracle Section 3, named `[Verb][Resource]Request` and
+`[Verb][Resource]Response`.
+
+Also define:
+```typescript
+export interface ApiError {
+  message: string;
+  status: number | undefined;
+  fields?: Record<string, string>;
+  correlationId?: string;  // only if Oracle Section 5.14 documents a request-ID header
+}
+```
+And a type guard `isApiError(e: unknown): e is ApiError`.
+
+─────────────────────────────────────────
+### 2.3 `src/types/schemas.ts`
+─────────────────────────────────────────
+
+Every Zod schema from Oracle Section 6.5.
+Export each as `export const [resourceName]Schema = z.object({ ... })`.
+Export the inferred TypeScript type alongside:
+`export type [ResourceName]FormValues = z.infer<typeof [resourceName]Schema>`.
+Every validation constraint must exactly mirror the Oracle Document.
+Add a JSDoc comment above each schema citing the Oracle section it encodes.
+
+══════════════════════════════════════════════════════════════════
+PHASE 3 — API LAYER
+══════════════════════════════════════════════════════════════════
+
+─────────────────────────────────────────
+### 3.1 `src/api/client.ts`
+─────────────────────────────────────────
+
+The Axios instance. Use the skeleton from Oracle Section 6.3 as the foundation
+and apply all of the following:
+
+**Concurrent-401 guard**: Use a module-level `isRedirecting` boolean flag.
+Before calling `window.location.assign('/login')`, check
+`if (isRedirecting) return; isRedirecting = true;`. Reset it never — a redirect
+is terminal. This prevents multiple concurrent 401s from triggering multiple
+navigate calls.
+
+**Upload-aware retry**: Do NOT retry file upload requests (requests whose
+`config.data` is `FormData`) after a 401. Clear auth and redirect instead.
+File upload progress is non-resumable; retrying silently restarts the upload
+from byte 0 with no user feedback, which is worse than showing a clean error.
+
+**Correlation ID extraction**: If Oracle Section 5.14 documents a request-ID
+or trace-ID header, extract it from every error response and attach it to the
+normalized error object as `correlationId`. This enables the error UI to
+display "Reference ID: xyz" for support workflows.
+
+**Idempotency header forwarding**: If Oracle Section 5.9 documents an
+idempotency key header name, ensure `isSafeToRetry()` treats requests
+bearing that header as retry-safe regardless of HTTP method.
+
+**Error envelope normalization**: The `normalizeApiError` function must handle
+every error envelope variant documented in Oracle Section 5.2, including
+Werkzeug routing errors if the Oracle Document notes they have a different shape.
+
+─────────────────────────────────────────
+### 3.2 `src/api/[resource].ts` — one file per resource group
+─────────────────────────────────────────
+
+For every logical resource group from Oracle Section 3, create one file.
+Every endpoint in Section 3 becomes one exported async function in this file.
+
+Rules for each function:
+- Name it clearly: `createUser`, `listOrders`, `getOrderById`, `deleteProduct`.
+- Accept a typed parameter object matching the `[Verb][Resource]Request` type.
+- Return the typed `[Verb][Resource]Response` type.
+- For endpoints with `Response Content-Type` other than `application/json`:
+  use `responseType: 'blob'` in the Axios config and return a `Blob`.
+  Document the expected MIME type in a JSDoc comment.
+- For endpoints with `Async Pattern: Starts background job`:
+  return the initial `202` response (containing the job ID), not the
+  final result. The polling logic lives in the hook layer (Phase 4).
+- Add a JSDoc comment citing the Oracle Section 3 entry this function implements,
+  including its `Idempotency` classification.
+- Add `// ⚠️ ORACLE UNCERTAIN: ...` comments at any site where the Oracle
+  Document flagged uncertainty about request or response shape.
+- Add `// ⚠️ RISK [HIGH/MEDIUM]: ...` comments at any site where Oracle
+  Section 11 flagged a risk for this endpoint.
+
+Do not put query key management, loading state, or error handling in this layer.
+This layer is purely: build the request, call the API, return typed data or throw.
+
+══════════════════════════════════════════════════════════════════
+PHASE 4 — DATA LAYER (TANSTACK QUERY HOOKS)
+══════════════════════════════════════════════════════════════════
+
+One file per resource group in `src/hooks/`.
+
+─────────────────────────────────────────
+### 4.1 Query hooks (`use[Resource]Query.ts`)
+─────────────────────────────────────────
+
+For every GET endpoint in the API layer:
+
+```typescript
+// Pattern for a standard query
+export const use[Resource]List = (filters: [ResourceFilters]) =>
+  useQuery({
+    queryKey: ['[resource]', 'list', filters],
+    queryFn: () => api[Resource].list(filters),
+    staleTime: /* mirror Oracle Section 5.10 cache guidance */,
+  });
+```
+
+Query key conventions (must be consistent across the entire codebase):
+- `['[resource]', 'list', ...filterArgs]` for collections
+- `['[resource]', 'detail', id]` for single items
+- `['[resource]', 'list', ...filterArgs, page]` for paginated collections
+
+For endpoints with `Async Pattern: Starts background job`, write a
+**polling hook** that:
+1. Takes the `job_id` returned by the mutation hook as input.
+2. Polls the status endpoint at the interval documented in Oracle Section 3's
+   Async Job Contract for that endpoint.
+3. Uses `enabled: !!jobId && !isTerminalState(status)` to stop polling
+   on terminal states (`completed`, `failed`, `cancelled`, and any others
+   documented in Oracle Section 3).
+4. Implements exponential backoff after the polling window documented
+   in Oracle Section 3.
+5. Exports the terminal states as a typed union and the `isTerminalState`
+   helper so calling components can branch on outcome.
+
+For paginated endpoints, use TanStack Query's `useInfiniteQuery` if the
+Oracle Document documents a cursor pattern, or `keepPreviousData: true`
+with page-number state if the pattern is page+per_page.
+
+─────────────────────────────────────────
+### 4.2 Mutation hooks (`use[Resource]Mutations.ts`)
+─────────────────────────────────────────
+
+For every POST/PUT/PATCH/DELETE endpoint:
+
+```typescript
+export const useCreate[Resource] = () =>
+  useMutation({
+    mutationFn: api[Resource].create,
+    onSuccess: (data, variables, context) => {
+      // Invalidate affected query keys. Be precise — only invalidate
+      // what this mutation actually affects.
+      queryClient.invalidateQueries({ queryKey: ['[resource]', 'list'] });
+      // If the Oracle Document documents a related resource that changes,
+      // invalidate it here too.
+    },
+    onError: (error: ApiError) => {
+      // Wire to the toast system from Phase 6.
+    },
+    // Optimistic update implementation if Oracle Section 6.7 or 7.x
+    // marks this mutation as optimistic-safe:
+    onMutate: async (variables) => { /* ... */ },
+    onSettled: () => { /* always refetch to reconcile */ },
+    // Retry policy from Oracle Section 5.9:
+    retry: /* false for unsafe mutations, 3 for safe GET-like operations */,
+  });
+```
+
+For every destructive mutation (DELETE or irreversible), do NOT call the
+mutation directly from the component. Instead export a `useConfirm[Resource]Delete`
+hook that encapsulates the confirmation dialog state and only fires the
+mutation after confirmation. Components call this hook, not the raw mutation.
+
+══════════════════════════════════════════════════════════════════
+PHASE 5 — STORES & GLOBAL STATE
+══════════════════════════════════════════════════════════════════
+
+─────────────────────────────────────────
+### 5.1 `src/stores/authStore.ts`
+─────────────────────────────────────────
+
+Zustand store for authentication state. Must include:
+
+```typescript
+interface AuthState {
+  accessToken: string | null;
+  user: CurrentUser | null;  // typed from Oracle Section 4.1
+  isAuthenticated: boolean;
+  role: UserRole | null;  // typed union from Oracle Section 2.2
+  setAccessToken: (token: string) => void;
+  setUser: (user: CurrentUser) => void;
+  clearAuth: () => void;
+}
+```
+
+Storage: If Oracle Section 2.1 documents JWT in localStorage, use
+`zustand/middleware`'s `persist` with `localStorage`. If auth is cookie-based,
+do NOT persist to localStorage — the token lives in the HttpOnly cookie
+and the store holds only the decoded user object and role.
+
+Never store tokens in `sessionStorage` (tab-close logout surprise) unless
+the Oracle Document explicitly documents this behavior.
+
+─────────────────────────────────────────
+### 5.2 `src/stores/uiStore.ts`
+─────────────────────────────────────────
+
+Zustand store for ephemeral UI state:
+- `toasts: Toast[]` with `addToast`, `removeToast`
+- `modals: Record<string, boolean>` with `openModal`, `closeModal`
+- `sidebarCollapsed: boolean` with `toggleSidebar` (if the Oracle Document
+  describes a sidebar layout in Section 7)
+- Any other global UI state the Oracle Document's screen specs reference
+
+─────────────────────────────────────────
+### 5.3 `src/stores/queryClient.ts`
+─────────────────────────────────────────
+
+Export the singleton `QueryClient` instance with:
+- `defaultOptions.queries.staleTime` set to mirror Oracle Section 5.10 guidance
+- `defaultOptions.queries.retry` set to respect Oracle Section 5.9 policy
+  (never retry on 401, 403, 404; retry 3× with backoff on network errors)
+- `defaultOptions.mutations.retry: false` unless Oracle Section 5.9 explicitly
+  documents safe mutation retry
+
+══════════════════════════════════════════════════════════════════
+PHASE 6 — UTILITIES & CROSS-CUTTING INFRASTRUCTURE
+══════════════════════════════════════════════════════════════════
+
+─────────────────────────────────────────
+### 6.1 `src/utils/errors.ts`
+─────────────────────────────────────────
+
+```typescript
+// parseApiError: extract the human-readable message from any thrown value
+// extractFieldErrors: turn a 422 `fields` map into React Hook Form setError() calls
+// isNotFound: returns true if the error is a 404
+// isUnauthorized: returns true if the error is a 401
+// isForbidden: returns true if the error is a 403
+// formatCorrelationId: returns "Reference ID: {id}" string if correlationId present
+```
+
+All message strings must use the exact error envelope fields documented in
+Oracle Section 5.2. Handle Werkzeug divergence if Oracle Section 5.2 documents it.
+
+─────────────────────────────────────────
+### 6.2 `src/utils/pagination.ts`
+─────────────────────────────────────────
+
+Helpers that exactly implement the pagination pattern from Oracle Section 5.1.
+Export:
+- `buildPageParams(page, perPage)` — constructs the exact query param object
+- `extractPaginationMeta(response)` — pulls `total_count`, `has_next`,
+  `next_cursor` (or whatever shape the Oracle Document documents) from a
+  paginated response
+- `getNextPageParam` — usable as the TanStack Query `getNextPageParam` option
+  if cursor-based
+
+─────────────────────────────────────────
+### 6.3 `src/utils/dates.ts`
+─────────────────────────────────────────
+
+Helpers that implement the exact contract from Oracle Section 5.7.
+Export:
+- `parseApiDate(raw)` — parses exactly the format documented (ISO 8601 / epoch)
+  and applies the timezone rule documented (always UTC → display in local, etc.)
+- `formatDisplayDate(date)` — user-facing format
+- `formatDisplayDateTime(date)` — user-facing with time
+- `toApiDate(date)` — serializes a JS Date back to the format the API expects
+If Oracle Section 5.7 documents naive timestamps that sometimes appear,
+add a `// ⚠️ RISK: naive timestamp — assume UTC` comment.
+
+─────────────────────────────────────────
+### 6.4 `src/utils/numbers.ts`
+─────────────────────────────────────────
+
+Only generate this file if Oracle Section 5.8 documents money, financial values,
+or precision-sensitive numerics. Export:
+- `parseMoney(raw)` — converts the API's transport format (cents int / decimal
+  string / float) to a `Decimal` instance (using `decimal.js`) or `number`
+  as appropriate
+- `formatCurrency(value, currency)` — user-facing display with rounding mode
+  documented in Oracle Section 5.8
+- `toApiMoney(decimal)` — serializes back to API transport format
+Add a JSDoc comment on each function citing which Oracle section mandated it.
+
+─────────────────────────────────────────
+### 6.5 `src/utils/guards.ts`
+─────────────────────────────────────────
+
+Route guard components:
+
+```typescript
+// <AuthGuard> — reads authStore.isAuthenticated
+// If false: redirect to /login?redirect=[current path]
+// If true: render <Outlet />
+
+// <RoleGuard role={requiredRole}> — reads authStore.role
+// If role insufficient: redirect to /403
+// If role sufficient: render <Outlet />
+// Accept a `role` prop typed as the role union from Oracle Section 2.2
+
+// <PublicOnlyGuard> — for /login, /register
+// If already authenticated: redirect to /dashboard
+// If not: render <Outlet />
+```
+
+These are React Router v6 layout route components using `<Outlet />`.
+They read from `authStore` synchronously — no async loading.
+
+═══════════════════════════════════════════════════════
+PHASE 7 — COMPONENT LIBRARY (DESIGN SYSTEM PRIMITIVES)
+═══════════════════════════════════════════════════════
+
+Before building any screen, build the shared component primitives that screens
+will compose. Infer the required primitives from the screen specs in Oracle
+Section 7. At minimum, produce:
+
+─────────────────────────────────────────
+### 7.1 `src/components/ui/Toast.tsx` + `src/components/ui/ToastProvider.tsx`
+─────────────────────────────────────────
+
+Implement the complete notification system from Oracle Section 9.1.
+The `ToastProvider` subscribes to `uiStore.toasts` and renders them.
+Variant types: `success`, `error`, `warning`, `info`.
+Duration per variant as documented in Oracle Section 9.1.
+`error` type toasts triggered by 500 responses must display the correlation ID
+in small text below the message if `correlationId` is present in the error object.
+
+─────────────────────────────────────────
+### 7.2 `src/components/ui/ConfirmDialog.tsx`
+─────────────────────────────────────────
+
+A reusable confirmation dialog. Props:
+```typescript
+interface ConfirmDialogProps {
+  open: boolean;
+  title: string;
+  body: string;
+  confirmLabel: string;
+  cancelLabel?: string;
+  destructive?: boolean;  // true → confirm button renders in danger color
+  requireTypedConfirmation?: string;  // if set, user must type this string to enable confirm
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+```
+Every destructive action documented in Oracle Section 7's screen specs
+uses this component. The `requireTypedConfirmation` prop is used for any
+action the Oracle Document marks as irreversible.
+
+─────────────────────────────────────────
+### 7.3 `src/components/ui/SkeletonLoader.tsx`
+─────────────────────────────────────────
+
+A composable skeleton that renders animated placeholder blocks.
+Props: `width`, `height`, `variant` (`text` | `rect` | `circle`).
+Used to build the per-screen skeleton states documented in Section 7.
+
+─────────────────────────────────────────
+### 7.4 `src/components/ui/EmptyState.tsx`
+─────────────────────────────────────────
+
+Props: `title`, `body`, `action` (optional button label + onClick).
+Used for every empty-list and empty-result state documented in Oracle Section 7.
+
+─────────────────────────────────────────
+### 7.5 `src/components/ui/ErrorState.tsx`
+─────────────────────────────────────────
+
+Props: `error` (ApiError), `onRetry` (optional).
+Renders a full-panel error state: message, optional reference ID, optional retry.
+Used for every screen-level error state documented in Oracle Section 7.
+If `error.correlationId` is present, render "Reference ID: {id}" in subdued text.
+
+─────────────────────────────────────────
+### 7.6 `src/components/ui/AsyncJobStatus.tsx`
+─────────────────────────────────────────
+
+Only generate this component if the Oracle Document documents one or more
+endpoints with `Async Pattern: Starts background job`.
+Props: `jobId`, `onComplete`, `onFailed`.
+Uses the polling hook from Phase 4 internally.
+Renders the UX state documented in the endpoint's `Async Job Contract` in
+Oracle Section 3 (spinner, progress, "Processing…" banner, etc.).
+Cleans up polling subscription on unmount.
+
+─────────────────────────────────────────
+### 7.7 Additional primitives
+─────────────────────────────────────────
+
+Infer any additional shared components from the Oracle Section 7 screen specs:
+- `<DataTable>` if multiple screens show tabular data with sort/filter
+- `<Pagination>` or `<InfiniteScrollSentinel>` per the pattern in Section 5.1
+- `<FileUploadDropzone>` if Oracle Section 5.3 documents file upload endpoints
+- `<RoleBadge>` if role is displayed in the UI (infer from Oracle Section 7 screens)
+- `<StatusBadge>` for every enum documented in Oracle Section 4.2 that appears
+  in list views — map each enum value to a color and label
+
+══════════════════════════════════════════════════════════════════
+PHASE 8 — AUTHENTICATION SCREENS
+══════════════════════════════════════════════════════════════════
+
+Build auth screens first. Every other screen depends on them.
+
+For each auth screen (Login, Register, Forgot Password, Reset Password —
+only those whose corresponding endpoints exist in Oracle Section 2 or 3):
+
+- Use the Zod schema from Phase 2 for form validation.
+- Use React Hook Form with `zodResolver`.
+- Map 422 field errors to `setError()` using `extractFieldErrors` from Phase 6.1.
+- Map 401 (wrong credentials) to a form-level error, not a field error.
+- After successful login: read `?redirect=` param, navigate there or to `/dashboard`.
+- After successful register: navigate as the Oracle Document's endpoint
+  `Frontend Integration Notes` specifies (auto-login? email verification gate?
+  redirect to onboarding?).
+- Show skeleton-appropriate loading state on submit.
+- All error messages must use exact strings from Oracle Section 2.3.
+
+══════════════════════════════════════════════════════════════════
+PHASE 9 — APPLICATION SCREENS
+══════════════════════════════════════════════════════════════════
+
+Build every screen from Oracle Section 7.2 in dependency order
+(screens that other screens link to before screens that are leaf nodes).
+
+For each screen, produce `src/pages/[ScreenName].tsx`.
+The component must implement exactly:
+
+**Data loading**: Every row in the screen's Data Loading table becomes a
+hook call. Use Suspense boundaries if the Oracle Document describes skeleton
+states that are independent of each other. Handle loading state with the
+skeleton layout described in the Oracle Document (not a spinner where a
+table skeleton was specified).
+
+**User interactions**: Every entry in the screen's User Interactions section
+becomes a handler. Build the request payload exactly as typed in the Oracle
+Document. Consume the mutation hook from Phase 4. On success and error,
+produce exactly the behavior documented (navigate, invalidate, toast, setError).
+
+**Pagination / Infinite scroll**: If documented, implement the exact
+scroll-trigger or page-button pattern specified. Use the helpers from Phase 6.2.
+Use the exact query key structure specified in Oracle Section 7.
+
+**Real-time updates**: If documented, subscribe to the socket event specified.
+On receive, apply the documented action (invalidate, update store, show notification).
+Unsubscribe on unmount.
+
+**Multi-step wizard flows**: If documented, model the flow as a finite state
+machine using `useReducer`. Steps must match Oracle Section 7 exactly.
+Guard advancement with the validation documented at each step gate.
+Preserve back-navigation — the user's prior step data must survive going back.
+
+**Confirmation dialogs**: Every destructive action uses `<ConfirmDialog>`.
+The `title`, `body`, and `confirmLabel` must match the tone documented in
+Oracle Section 7 (which may say "Title: Delete [Resource]? Body: This cannot
+be undone."). The `requireTypedConfirmation` prop must be used for any action
+the Oracle Document marks as irreversible.
+
+**Optimistic updates**: Apply the global policy from Oracle Section 6.7 unless
+this screen has a documented override in Section 7.
+
+**Empty state**: Render `<EmptyState>` with the title/body/action inferred from
+Oracle Section 7 or, if unspecified, sensible defaults consistent with the
+application purpose from Section 1.1.
+
+**Error state**: Render `<ErrorState>` for query errors. Include a retry
+button if the query is refetchable.
+
+**Skeleton state**: Reproduce the skeleton layout described in Oracle Section 7,
+using `<SkeletonLoader>` primitives. The skeleton must structurally mirror the
+loaded state (same grid, same number of placeholder rows, same panel structure).
+
+══════════════════════════════════════════════════════════════════
+PHASE 10 — GLOBAL SHELL & LAYOUT
+══════════════════════════════════════════════════════════════════
+
+─────────────────────────────────────────
+### 10.1 `src/components/layout/AppShell.tsx`
+─────────────────────────────────────────
+
+The persistent shell that wraps all authenticated screens.
+Infer the shell structure from Oracle Section 7's layout descriptions.
+Common inferences:
+- If multiple screens describe "sidebar + main content" → render a
+  collapsible sidebar with the nav items inferred from Section 8.1.
+- If multiple screens describe "full-width" → render a top nav with user menu.
+- The shell reads `authStore.user` and `authStore.role` for personalized nav items.
+- Nav items that require a role the user doesn't have must be hidden
+  (not merely disabled — removed from the DOM).
+
+─────────────────────────────────────────
+### 10.2 `src/pages/NotFound.tsx`, `src/pages/Forbidden.tsx`, `src/pages/ServerError.tsx`
+─────────────────────────────────────────
+
+All three error boundary screens.
+`Forbidden` renders a meaningful message and a "Go to Dashboard" link.
+`ServerError` renders a "Something went wrong" message and a retry/home option.
+Both display a reference ID if one is available in session context.
+
+─────────────────────────────────────────
+### 10.3 `src/main.tsx`
+─────────────────────────────────────────
+
+App entry point. Wraps with:
+- `QueryClientProvider` (using the client from Phase 5.3)
+- `ToastProvider` (from Phase 7.1)
+- `RouterProvider` (from Phase 1.5)
+No other providers unless the Oracle Document documents additional context
+(e.g., Stripe `<Elements>`, Socket.IO context).
+
+══════════════════════════════════════════════════════════════════
+PHASE 11 — INTEGRATION TEST SCAFFOLDING
+══════════════════════════════════════════════════════════════════
+
+For each endpoint documented in Oracle Section 10's integration testing checklist,
+produce a Vitest + React Testing Library test file in `src/__tests__/`.
+
+Each test file must contain a `describe` block per endpoint with one `it` per
+checklist item. Stub the Axios client using `vi.mock('@/api/client')`.
+Pre-populate test cases with the exact success and error response bodies from
+Oracle Section 3 (copy the JSON shapes verbatim as mock return values).
+Mark tests that require real backend interaction with `it.todo()` and a comment
+citing which Oracle checklist item they cover.
+
+Checklist items that must be tested (from Oracle Section 10):
+- Happy path renders
+- 401 → redirect to login
+- 403 → forbidden screen, no leaked UI
+- 422 → inline field errors shown on correct fields
+- 404 → error state renders with retry
+- Network error → error state with retry
+- Double-submit prevention
+- Optimistic update rollback (for optimistic mutations)
+- Background job polling termination at terminal state
+
+══════════════════════════════════════════════════════════════════
+PHASE 12 — FINAL SELF-AUDIT
+══════════════════════════════════════════════════════════════════
+
+Before declaring output complete, run this checklist against your own output.
+If any item fails, fix it before finishing.
+
+[ ] Every endpoint in Oracle Section 3 has a corresponding function in `src/api/`
+[ ] Every function in `src/api/` has a corresponding hook in `src/hooks/`
+[ ] Every form surface has a Zod schema in `src/types/schemas.ts`
+[ ] Every screen in Oracle Section 7 has a page component in `src/pages/`
+[ ] Every route in Oracle Section 8.1 appears in `src/router.tsx`
+[ ] Every enum in Oracle Section 4.2 has a TypeScript type in `src/types/models.ts`
+[ ] No field appears in TypeScript types that the Oracle Document marks as
+    serializer-hidden (dump_only, excluded, not in API surface)
+[ ] Every [HIGH] risk from Oracle Section 11 has a defensive comment at its code site
+[ ] Every destructive action uses `<ConfirmDialog>` — search your output for
+    `delete`, `remove`, `revoke`, `cancel` and verify each is guarded
+[ ] Every `window.location.assign('/login')` call is guarded by `isRedirecting`
+[ ] The `refreshAccessToken` function uses a raw `axios.post` (not the intercepted
+    instance) to prevent infinite refresh loops
+[ ] No component imports directly from `src/api/` — all data fetching goes through
+    `src/hooks/`
+[ ] Correlation IDs from Oracle Section 5.14 appear in `<ErrorState>` and
+    `<Toast>` on server errors, if the Oracle Document documents their presence
+[ ] `.env.example` contains only variables marked [FRONTEND MUST SET] in
+    Oracle Section 1.3 — no invented variables
+[ ] All date parsing uses `src/utils/dates.ts` — no raw `new Date()` calls on
+    API responses anywhere in the codebase
+[ ] All money/financial values route through `src/utils/numbers.ts` if applicable
+[ ] `QueryClient` retry options never retry 401, 403, or 404 responses
+
+FINAL OUTPUT INSTRUCTION:
+Produce every file completely. No ellipses. No "// ... rest of implementation."
+No "similar to above." Every import must resolve. Every type must be defined.
+If a section of output would make the response very long, continue anyway —
+completeness is the entire point.
+If forced to prioritize due to length, complete Phases 1–6 at full fidelity
+before reducing detail in Phases 8–9 (screen implementations). Never truncate
+Phases 1–6.
+
+For every file you produce, begin with a comment block:
+```typescript
+/**
+ * [filename]
+ * Oracle Document sections consumed: [list the section numbers this file implements]
+ * Last item from Section 11 risks addressed here: [if any]
+ */
+```
