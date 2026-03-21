@@ -28,6 +28,7 @@ import {
   useUpdateCustomerTierMutation
 } from '@/hooks/loyalty';
 import { authStore } from '@/stores/authStore';
+import { backendCapabilities } from '@/config/backendCapabilities';
 import type { Column } from '@/components/ui/DataTable';
 import type { LoyaltyAccount, LoyaltyTier, LoyaltyTransaction as _LoyaltyTransaction } from '@/api/loyalty';
 import { formatCurrency } from '@/utils/numbers';
@@ -220,16 +221,18 @@ export default function LoyaltyPage() {
           >
             Redeem
           </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => {
-              setAdjustForm({ ...adjustForm, customer_id: account.customer_id });
-              setShowAdjustDialog(true);
-            }}
-          >
-            Adjust
-          </Button>
+          {backendCapabilities.loyalty.manualAdjustments && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setAdjustForm({ ...adjustForm, customer_id: account.customer_id });
+                setShowAdjustDialog(true);
+              }}
+            >
+              Adjust
+            </Button>
+          )}
         </div>
       ),
     },
@@ -280,30 +283,36 @@ export default function LoyaltyPage() {
       header: 'Actions',
       render: (tier) => (
         <div className="flex space-x-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => {
-              setTierForm({
-                name: tier.name,
-                description: tier.description,
-                min_points: tier.min_points,
-                max_points: tier.max_points,
-                benefits: tier.benefits.join(', '),
-                multiplier: tier.multiplier,
-              });
-              setShowTierDialog(true);
-            }}
-          >
-            Edit
-          </Button>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => setDeleteTarget(tier.id)}
-          >
-            Delete
-          </Button>
+          {backendCapabilities.loyalty.tierManagement ? (
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setTierForm({
+                    name: tier.name,
+                    description: tier.description,
+                    min_points: tier.min_points,
+                    max_points: tier.max_points,
+                    benefits: tier.benefits.join(', '),
+                    multiplier: tier.multiplier,
+                  });
+                  setShowTierDialog(true);
+                }}
+              >
+                Edit
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setDeleteTarget(tier.id)}
+              >
+                Delete
+              </Button>
+            </>
+          ) : (
+            <span className="text-sm text-gray-500">Read only</span>
+          )}
         </div>
       ),
     },
@@ -493,6 +502,14 @@ export default function LoyaltyPage() {
       {/* Customers Tab */}
       {activeTab === 'customers' && (
         <div className="space-y-6">
+          {(!backendCapabilities.loyalty.enrollment || !backendCapabilities.loyalty.manualAdjustments) && (
+            <Card>
+              <CardContent className="py-4 text-sm text-gray-600">
+                Enrollment and manual point adjustments are not available in the current backend deployment. Customer
+                redemption remains fully supported.
+              </CardContent>
+            </Card>
+          )}
           <div className="flex items-center justify-between">
             <Input
               placeholder="Search customers..."
@@ -500,7 +517,7 @@ export default function LoyaltyPage() {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="max-w-sm"
             />
-            {canManage && (
+            {canManage && backendCapabilities.loyalty.enrollment && (
               <Button variant="primary" onClick={() => setShowEnrollDialog(true)}>
                 Enroll Customer
               </Button>
@@ -591,12 +608,19 @@ export default function LoyaltyPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle>Loyalty Tiers</CardTitle>
-              <Button variant="primary" onClick={() => setShowTierDialog(true)}>
-                Add Tier
-              </Button>
+              {backendCapabilities.loyalty.tierManagement && (
+                <Button variant="primary" onClick={() => setShowTierDialog(true)}>
+                  Add Tier
+                </Button>
+              )}
             </div>
           </CardHeader>
           <CardContent>
+            {!backendCapabilities.loyalty.tierManagement && (
+              <p className="mb-4 text-sm text-gray-600">
+                The backend currently exposes tiers as read-only loyalty metadata.
+              </p>
+            )}
             {program.tiers.length > 0 ? (
               <DataTable
                 columns={tierColumns}
@@ -628,7 +652,7 @@ export default function LoyaltyPage() {
 
       {/* Adjust Points Dialog */}
       <ConfirmDialog
-        open={showAdjustDialog}
+        open={backendCapabilities.loyalty.manualAdjustments && showAdjustDialog}
         title="Adjust Points"
         body="Enter the points to adjust (positive to add, negative to subtract)"
         confirmLabel={adjustMutation.isPending ? 'Adjusting...' : 'Adjust'}
@@ -641,7 +665,7 @@ export default function LoyaltyPage() {
 
       {/* Enroll Customer Dialog */}
       <ConfirmDialog
-        open={showEnrollDialog}
+        open={backendCapabilities.loyalty.enrollment && showEnrollDialog}
         title="Enroll Customer"
         body="Enter the customer ID to enroll in the loyalty program"
         confirmLabel={enrollMutation.isPending ? 'Enrolling...' : 'Enroll'}
@@ -654,7 +678,7 @@ export default function LoyaltyPage() {
 
       {/* Create/Edit Tier Dialog */}
       <ConfirmDialog
-        open={showTierDialog}
+        open={backendCapabilities.loyalty.tierManagement && showTierDialog}
         title={tierForm.name ? 'Edit Tier' : 'Create Tier'}
         body="Configure the loyalty tier details"
         confirmLabel={createTierMutation.isPending ? 'Saving...' : 'Save'}
@@ -674,7 +698,7 @@ export default function LoyaltyPage() {
 
       {/* Delete Tier Confirmation */}
       <ConfirmDialog
-        open={!!deleteTarget}
+        open={backendCapabilities.loyalty.tierManagement && !!deleteTarget}
         title="Delete Tier"
         body="Are you sure you want to delete this tier? Customers in this tier will be moved to the default tier."
         confirmLabel="Delete"

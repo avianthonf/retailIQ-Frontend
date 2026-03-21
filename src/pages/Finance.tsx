@@ -24,6 +24,7 @@ import {
   useRepayCreditMutation
 } from '@/hooks/finance';
 import { authStore } from '@/stores/authStore';
+import { backendCapabilities } from '@/config/backendCapabilities';
 import type { Column } from '@/components/ui/DataTable';
 import type { LoanApplication, FinancialAccount, TreasuryTransaction } from '@/api/finance';
 import { formatCurrency } from '@/utils/numbers';
@@ -292,7 +293,7 @@ export default function FinancePage() {
                     )}
                   </div>
                 </div>
-                {(!kyc || kyc.status === 'PENDING') && (
+                {(!kyc || kyc.status === 'PENDING') && backendCapabilities.finance.kycSubmission && (
                   <Button variant="primary">
                     {!kyc ? 'Start KYC Process' : 'Complete KYC'}
                   </Button>
@@ -341,7 +342,7 @@ export default function FinancePage() {
                   </p>
                 </div>
               )}
-              {(!kyc || kyc.status === 'PENDING') && (
+              {(!kyc || kyc.status === 'PENDING') && backendCapabilities.finance.kycSubmission && (
                 <div className="pt-4">
                   <Button variant="primary">
                     {!kyc ? 'Start KYC Process' : 'Resubmit Documents'}
@@ -425,13 +426,11 @@ export default function FinancePage() {
             ) : (
               <EmptyState
                 title="No Loan Applications"
-                body="You haven't applied for any loans yet."
-                action={{
-                  label: 'Apply for Loan',
-                  onClick: () => {
-                    // TODO: Implement loan application flow
-                  },
-                }}
+                body={
+                  backendCapabilities.finance.loanApplications
+                    ? "You haven't applied for any loans yet."
+                    : 'Loan application creation is not available from this frontend deployment.'
+                }
               />
             )}
           </CardContent>

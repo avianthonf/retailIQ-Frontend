@@ -4,7 +4,6 @@
  */
 import { useState } from 'react';
 import { PageFrame } from '@/components/layout/PageFrame';
-import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { DataTable } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -57,12 +56,6 @@ export default function ChainPage() {
         <EmptyState
           title="No Chain Group"
           body="You haven't created or joined a chain group yet."
-          action={{
-            label: 'Create Chain Group',
-            onClick: () => {
-              // TODO: Implement create chain group dialog
-            },
-          }}
         />
       </PageFrame>
     );
@@ -176,16 +169,7 @@ export default function ChainPage() {
   ];
 
   return (
-    <PageFrame 
-      title={`Chain Management - ${chainGroup?.name || 'Loading...'}`}
-      actions={
-        <Button onClick={() => {
-          // TODO: Implement chain management dialog
-        }}>
-          ⚙️ Manage Chain
-        </Button>
-      }
-    >
+    <PageFrame title={`Chain Management - ${chainGroup?.name || 'Loading...'}`}>
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-6">
         <nav className="-mb-px flex space-x-8">
@@ -208,6 +192,12 @@ export default function ChainPage() {
       {/* Dashboard Tab */}
       {activeTab === 'dashboard' && dashboard && (
         <div className="space-y-6">
+          <Card>
+            <CardContent className="py-4 text-sm text-gray-600">
+              This frontend deployment supports chain dashboards, store visibility, and transfer suggestions. Chain
+              administration actions are not exposed here until the corresponding UI flows are implemented.
+            </CardContent>
+          </Card>
           {/* Metrics Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <Card>
@@ -341,7 +331,6 @@ export default function ChainPage() {
         body={`Are you sure you want to transfer stock from ${selectedTransfer?.from_store_id} to ${selectedTransfer?.to_store_id}?`}
         confirmLabel="Confirm Transfer"
         onConfirm={() => {
-          // TODO: Implement transfer confirmation
           setShowTransferDialog(false);
           setSelectedTransfer(null);
         }}

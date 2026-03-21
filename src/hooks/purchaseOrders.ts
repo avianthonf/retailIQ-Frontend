@@ -208,8 +208,8 @@ export const getPurchaseOrderStatusText = (status: PurchaseOrderStatus): string 
   }
 };
 
-export const canEditPurchaseOrder = (status: PurchaseOrderStatus): boolean => {
-  return status === 'DRAFT';
+export const canEditPurchaseOrder = (_status: PurchaseOrderStatus): boolean => {
+  return false;
 };
 
 export const canDeletePurchaseOrder = (status: PurchaseOrderStatus): boolean => {

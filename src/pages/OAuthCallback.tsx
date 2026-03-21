@@ -33,27 +33,23 @@ export default function OAuthCallbackPage() {
       return;
     }
 
-    // In a real implementation, this would exchange the code for tokens
-    // For now, we'll simulate the process
-    setTimeout(() => {
-      // Simulate successful token exchange
-      setStatus('success');
-      setMessage('Authorization successful! You can close this window and return to the application.');
-      
-      // Store the authorization code for the parent window (in case of popup flow)
-      if (window.opener) {
-        window.opener.postMessage({
+    setStatus('success');
+    setMessage('Authorization code received. Return to the requesting application to finish token exchange.');
+
+    if (window.opener) {
+      window.opener.postMessage(
+        {
           type: 'oauth_success',
-          code: code,
-          state: state
-        }, '*');
-        
-        // Close popup after a delay
-        setTimeout(() => {
-          window.close();
-        }, 2000);
-      }
-    }, 1500);
+          code,
+          state,
+        },
+        '*',
+      );
+
+      setTimeout(() => {
+        window.close();
+      }, 2000);
+    }
   }, [searchParams]);
 
   const handleReturn = () => {

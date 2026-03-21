@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
-import { usePurchaseOrderQuery, useSendPurchaseOrderMutation, useConfirmPurchaseOrderMutation, useReceivePurchaseOrderMutation, useCancelPurchaseOrderMutation } from '@/hooks/purchaseOrders';
+import { usePurchaseOrderQuery, useSendPurchaseOrderMutation, useReceivePurchaseOrderMutation, useCancelPurchaseOrderMutation } from '@/hooks/purchaseOrders';
 import { useSuppliersQuery } from '@/hooks/suppliers';
 import type { BadgeProps } from '@/components/ui/Badge';
 import type { Supplier } from '@/api/suppliers';
@@ -22,7 +22,6 @@ import {
   getPurchaseOrderStatusText,
   canEditPurchaseOrder,
   canSendPurchaseOrder,
-  canConfirmPurchaseOrder,
   canReceivePurchaseOrder,
   canCancelPurchaseOrder
 } from '@/hooks/purchaseOrders';
@@ -40,7 +39,6 @@ export default function PurchaseOrderDetailPage() {
 
   // Mutations for status transitions
   const sendMutation = useSendPurchaseOrderMutation();
-  const confirmMutation = useConfirmPurchaseOrderMutation();
   const receiveMutation = useReceivePurchaseOrderMutation();
   const cancelMutation = useCancelPurchaseOrderMutation();
 
@@ -52,15 +50,6 @@ export default function PurchaseOrderDetailPage() {
     try {
       await sendMutation.mutateAsync(purchaseOrderId);
       alert('Purchase order sent to supplier successfully');
-    } catch {
-      // Error handled by mutation
-    }
-  };
-
-  const handleConfirm = async () => {
-    try {
-      await confirmMutation.mutateAsync(purchaseOrderId);
-      alert('Purchase order confirmed successfully');
     } catch {
       // Error handled by mutation
     }
@@ -140,12 +129,6 @@ export default function PurchaseOrderDetailPage() {
           {canSendPurchaseOrder(purchaseOrder.status) && (
             <Button variant="primary" onClick={handleSend} loading={sendMutation.isPending}>
               Send to Supplier
-            </Button>
-          )}
-          
-          {canConfirmPurchaseOrder(purchaseOrder.status) && (
-            <Button variant="primary" onClick={handleConfirm} loading={confirmMutation.isPending}>
-              Confirm Order
             </Button>
           )}
           

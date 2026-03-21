@@ -8,6 +8,7 @@ import { PageFrame } from '@/components/layout/PageFrame';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
+import { developerApi } from '@/api/developer';
 import { authStore } from '@/stores/authStore';
 
 export default function OAuthAuthorizePage() {
@@ -15,14 +16,7 @@ export default function OAuthAuthorizePage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [appInfo, setAppInfo] = useState<{
-    client_id: string;
-    app_name: string;
-    description?: string;
-    redirect_uri: string;
-    scopes: string[];
-    state?: string;
-  } | null>(null);
+  const [appInfo, setAppInfo] = useState<Awaited<ReturnType<typeof developerApi.authorize>> | null>(null);
 
   // Check if user is authenticated
   const user = authStore.getState().user;
@@ -49,41 +43,39 @@ export default function OAuthAuthorizePage() {
       return;
     }
 
-    // In a real implementation, you would fetch app info from the backend
-    // For now, we'll simulate it
-    setTimeout(() => {
-      setAppInfo({
+    void developerApi
+      .authorize({
         client_id: clientId,
-        app_name: `Application ${clientId.slice(0, 8)}`,
-        description: 'Third-party application requesting access to your RetailIQ account',
         redirect_uri: redirectUri,
-        scopes: scope.split(' '),
+        response_type: responseType,
+        scope,
         state: state || undefined,
+      })
+      .then((response) => {
+        setAppInfo(response);
+      })
+      .catch((requestError: unknown) => {
+        const message =
+          requestError instanceof Error ? requestError.message : 'Unable to load the authorization request.';
+        setError(message);
+      })
+      .finally(() => {
+        setLoading(false);
       });
-      setLoading(false);
-    }, 500);
   }, [searchParams, navigate, isAuthenticated]);
 
   const handleApprove = async () => {
     if (!appInfo) return;
 
     try {
-      // In a real implementation, this would redirect to the backend with approval
-      const params = new URLSearchParams({
+      const approval = await developerApi.approveAuthorizationRequest({
         client_id: appInfo.client_id,
         redirect_uri: appInfo.redirect_uri,
         response_type: 'code',
         scope: appInfo.scopes.join(' '),
-        user_id: user!.user_id.toString(),
-        approve: 'true',
+        state: appInfo.state,
       });
-
-      if (appInfo.state) {
-        params.append('state', appInfo.state);
-      }
-
-      // Redirect to backend OAuth endpoint
-      window.location.href = `/api/v1/oauth/authorize?${params.toString()}`;
+      window.location.assign(approval.redirect_url);
     } catch {
       // Error handled by mutation
     }
@@ -219,7 +211,7 @@ export default function OAuthAuthorizePage() {
                 onClick={() => navigate('/login')}
                 className="text-sm mt-2"
               >
-                Not you? Log out
+                Use a different account
               </Button>
             </div>
           </CardContent>

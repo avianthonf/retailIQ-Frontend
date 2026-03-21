@@ -87,6 +87,21 @@ export interface OAuthToken {
   refresh_token?: string;
 }
 
+export interface OAuthAuthorizationRequest {
+  client_id: string;
+  app_name: string;
+  description?: string;
+  redirect_uri: string;
+  scopes: string[];
+  state?: string;
+}
+
+export interface OAuthAuthorizationApproval {
+  redirect_url: string;
+  code: string;
+  state?: string;
+}
+
 export interface ApiDocumentation {
   version: string;
   base_url: string;
@@ -271,17 +286,26 @@ export const developerApi = {
     response_type: string;
     scope: string;
     state?: string;
-  }): Promise<{ authorize_url: string }> => {
-    const search = new URLSearchParams({
-      client_id: params.client_id,
-      redirect_uri: params.redirect_uri,
-      response_type: params.response_type,
-      scope: params.scope,
-      ...(params.state ? { state: params.state } : {}),
-    });
+  }): Promise<OAuthAuthorizationRequest> =>
+    request<OAuthAuthorizationRequest>({
+      url: '/oauth/authorize',
+      method: 'GET',
+      params,
+    }),
 
-    return { authorize_url: `${getBaseUrl()}/oauth/authorize?${search.toString()}` };
-  },
+  approveAuthorizationRequest: async (params: {
+    client_id: string;
+    redirect_uri: string;
+    response_type: string;
+    scope: string;
+    state?: string;
+  }): Promise<OAuthAuthorizationApproval> =>
+    request<OAuthAuthorizationApproval>({
+      url: '/oauth/authorize',
+      method: 'POST',
+      params,
+      data: { confirm: true },
+    }),
 
   exchangeCodeForToken: async (data: {
     client_id: string;

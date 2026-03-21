@@ -29,6 +29,7 @@ import {
   useExportForecastsMutation
 } from '@/hooks/marketIntelligence';
 import { authStore } from '@/stores/authStore';
+import { backendCapabilities } from '@/config/backendCapabilities';
 import type { Column } from '@/components/ui/DataTable';
 import type { PriceSignal, MarketAlert, CompetitorAnalysis, DemandForecast } from '@/api/marketIntelligence';
 import { formatCurrency } from '@/utils/numbers';
@@ -60,6 +61,14 @@ export default function MarketIntelligencePage() {
   // Check if user is owner or staff
   const user = authStore.getState().user;
   const canManage = user?.role === 'owner' || user?.role === 'staff';
+  const tabs = ([
+    'overview',
+    'signals',
+    ...(backendCapabilities.marketIntelligence.competitors ? (['competitors'] as const) : []),
+    ...(backendCapabilities.marketIntelligence.forecasts ? (['forecasts'] as const) : []),
+    'alerts',
+    ...(backendCapabilities.marketIntelligence.recommendations ? (['recommendations'] as const) : []),
+  ] as const);
 
   // Queries
   const { data: summary, isLoading: summaryLoading, error: summaryError } = useMarketSummaryQuery(selectedRegion || undefined);
@@ -372,7 +381,7 @@ export default function MarketIntelligencePage() {
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-6">
         <nav className="-mb-px flex space-x-8">
-          {(['overview', 'signals', 'competitors', 'forecasts', 'alerts', 'recommendations'] as const).map((tab) => (
+          {tabs.map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -391,6 +400,17 @@ export default function MarketIntelligencePage() {
       {/* Overview Tab */}
       {activeTab === 'overview' && summary && (
         <div className="space-y-6">
+          {(!backendCapabilities.marketIntelligence.competitors
+            || !backendCapabilities.marketIntelligence.forecasts
+            || !backendCapabilities.marketIntelligence.recommendations) && (
+            <Card>
+              <CardContent className="py-4 text-sm text-gray-600">
+                The deployed backend currently supports market summaries, price signals, and alert acknowledgement.
+                Competitor analysis, demand forecasts, and recommendation endpoints are not available in this
+                deployment.
+              </CardContent>
+            </Card>
+          )}
           {/* Region Selector */}
           <div className="flex items-center space-x-4">
             <Input
@@ -538,7 +558,12 @@ export default function MarketIntelligencePage() {
               <CardTitle>Competitor Analysis</CardTitle>
             </CardHeader>
             <CardContent>
-              {competitorsLoading ? (
+              {!backendCapabilities.marketIntelligence.competitors ? (
+                <EmptyState
+                  title="Competitor Analysis Not Available"
+                  body="The deployed backend does not expose competitor analysis endpoints."
+                />
+              ) : competitorsLoading ? (
                 <SkeletonLoader width="100%" height="400px" variant="rect" />
               ) : competitors && competitors.length > 0 ? (
                 <DataTable
@@ -561,27 +586,31 @@ export default function MarketIntelligencePage() {
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div className="flex space-x-2">
-              {canManage && (
+              {canManage && backendCapabilities.marketIntelligence.forecasts && (
                 <Button variant="primary" onClick={() => setShowGenerateForecastDialog(true)}>
                   Generate Forecast
                 </Button>
               )}
             </div>
             <div className="flex space-x-2">
-              <Button
-                variant="secondary"
-                onClick={() => handleExportForecasts('csv')}
-                loading={exportForecastsMutation.isPending}
-              >
-                Export CSV
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => handleExportForecasts('excel')}
-                loading={exportForecastsMutation.isPending}
-              >
-                Export Excel
-              </Button>
+              {backendCapabilities.marketIntelligence.forecasts && (
+                <>
+                  <Button
+                    variant="secondary"
+                    onClick={() => handleExportForecasts('csv')}
+                    loading={exportForecastsMutation.isPending}
+                  >
+                    Export CSV
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => handleExportForecasts('excel')}
+                    loading={exportForecastsMutation.isPending}
+                  >
+                    Export Excel
+                  </Button>
+                </>
+              )}
             </div>
           </div>
 
@@ -635,43 +664,51 @@ export default function MarketIntelligencePage() {
       {/* Recommendations Tab */}
       {activeTab === 'recommendations' && recommendations && (
         <div className="space-y-6">
-          {recommendations.map((rec) => (
-            <Card key={rec.id}>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">{rec.title}</CardTitle>
-                  <div className="flex items-center space-x-2">
-                    <Badge variant={rec.priority === 'HIGH' ? 'warning' : 'secondary'}>
-                      {rec.priority}
-                    </Badge>
-                    <Badge variant="primary">{rec.type}</Badge>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <p className="text-gray-700 mb-4">{rec.description}</p>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="font-medium">Expected Impact:</span> {rec.expected_impact}
-                  </div>
-                  <div>
-                    <span className="font-medium">Effort Required:</span> {rec.effort_required}
-                  </div>
-                  {rec.due_date && (
-                    <div>
-                      <span className="font-medium">Due Date:</span> {formatDate(rec.due_date)}
-                    </div>
-                  )}
-                  <div>
-                    <span className="font-medium">Status:</span>
-                    <Badge variant={rec.status === 'COMPLETED' ? 'success' : 'warning'}>
-                      {rec.status}
-                    </Badge>
-                  </div>
-                </div>
+          {!backendCapabilities.marketIntelligence.recommendations ? (
+            <Card>
+              <CardContent className="py-4 text-sm text-gray-600">
+                Recommendations are not available from the deployed backend.
               </CardContent>
             </Card>
-          ))}
+          ) : (
+            recommendations.map((rec) => (
+              <Card key={rec.id}>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg">{rec.title}</CardTitle>
+                    <div className="flex items-center space-x-2">
+                      <Badge variant={rec.priority === 'HIGH' ? 'warning' : 'secondary'}>
+                        {rec.priority}
+                      </Badge>
+                      <Badge variant="primary">{rec.type}</Badge>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-gray-700 mb-4">{rec.description}</p>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="font-medium">Expected Impact:</span> {rec.expected_impact}
+                    </div>
+                    <div>
+                      <span className="font-medium">Effort Required:</span> {rec.effort_required}
+                    </div>
+                    {rec.due_date && (
+                      <div>
+                        <span className="font-medium">Due Date:</span> {formatDate(rec.due_date)}
+                      </div>
+                    )}
+                    <div>
+                      <span className="font-medium">Status:</span>
+                      <Badge variant={rec.status === 'COMPLETED' ? 'success' : 'warning'}>
+                        {rec.status}
+                      </Badge>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
         </div>
       )}
 
@@ -690,7 +727,7 @@ export default function MarketIntelligencePage() {
 
       {/* Generate Forecast Dialog */}
       <ConfirmDialog
-        open={showGenerateForecastDialog}
+        open={backendCapabilities.marketIntelligence.forecasts && showGenerateForecastDialog}
         title="Generate Demand Forecast"
         body="Enter the product details and forecast period"
         confirmLabel={generateForecastMutation.isPending ? 'Generating...' : 'Generate'}

@@ -5,7 +5,7 @@
  */
 import { useParams, useNavigate } from 'react-router-dom';
 import { PageFrame } from '@/components/layout/PageFrame';
-import { PurchaseOrderForm } from '@/components/purchases/PurchaseOrderForm';
+import { Button } from '@/components/ui/Button';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
 import { usePurchaseOrderQuery } from '@/hooks/purchaseOrders';
@@ -45,35 +45,21 @@ export default function PurchaseOrderEditPage() {
     );
   }
 
-  // Check if order can be edited
-  if (purchaseOrder.status !== 'DRAFT') {
-    return (
-      <PageFrame title="Edit Purchase Order">
-        <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
-          <p className="text-yellow-800">
-            This purchase order cannot be edited because it has already been sent or confirmed.
-          </p>
-        </div>
-      </PageFrame>
-    );
-  }
-
-  const handleSuccess = (purchaseOrderId: string) => {
-    alert(`Purchase Order ${purchaseOrderId} updated successfully`);
-    navigate(`/purchase-orders/${purchaseOrderId}`);
-  };
-
   const handleCancel = () => {
     navigate(`/purchase-orders/${purchaseOrderId}`);
   };
 
   return (
     <PageFrame title={`Edit Purchase Order ${purchaseOrderId}`}>
-      <PurchaseOrderForm
-        initialData={purchaseOrder}
-        onSuccess={handleSuccess}
-        onCancel={handleCancel}
-      />
+      <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+        <p className="text-yellow-800">
+          Editing draft purchase orders is not supported by the current backend deployment. You can still review,
+          send, receive, or cancel this purchase order from its detail page.
+        </p>
+        <Button className="mt-4" variant="secondary" onClick={handleCancel}>
+          Back to Purchase Order
+        </Button>
+      </div>
     </PageFrame>
   );
 }

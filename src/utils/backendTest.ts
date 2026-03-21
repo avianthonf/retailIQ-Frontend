@@ -8,7 +8,7 @@ export async function testBackendConnection() {
     console.log('Testing backend connection to:', import.meta.env.VITE_API_BASE_URL);
     
     // Test a simple GET request to check if backend is reachable
-    const response = await apiClient.get('/api/v1/health');
+    const response = await apiClient.get('/health');
     
     console.log('Backend connection successful:', response.data);
     return {

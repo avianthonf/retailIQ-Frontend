@@ -26,6 +26,7 @@
       "@/pages/*": ["src/pages/*"],
       "@/types/*": ["src/types/*"],
       "@/utils/*": ["src/utils/*"],
+      "@/config/*": ["src/config/*"],
       "@/styles/*": ["src/styles/*"]
     },
     "types": ["vite/client", "node"]

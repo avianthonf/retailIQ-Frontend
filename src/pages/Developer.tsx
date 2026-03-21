@@ -34,6 +34,7 @@ import {
   useRegenerateClientSecretMutation
 } from '@/hooks/developer';
 import { authStore } from '@/stores/authStore';
+import { backendCapabilities } from '@/config/backendCapabilities';
 import type { Column } from '@/components/ui/DataTable';
 import type { ApiKey, Webhook, OAuthApplication } from '@/api/developer';
 import { formatDate } from '@/utils/dates';
@@ -73,6 +74,14 @@ export default function DeveloperPage() {
   // Check if user is owner or staff
   const user = authStore.getState().user;
   const canManage = user?.role === 'owner' || user?.role === 'staff';
+  const tabs = ([
+    'overview',
+    'api-keys',
+    ...(backendCapabilities.developer.webhooks ? (['webhooks'] as const) : []),
+    'oauth',
+    'docs',
+    'logs',
+  ] as const);
 
   // Queries
   const { data: apiKeys, isLoading: apiKeysLoading } = useApiKeysQuery();
@@ -324,7 +333,7 @@ export default function DeveloperPage() {
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-6">
         <nav className="-mb-px flex space-x-8">
-          {(['overview', 'api-keys', 'webhooks', 'oauth', 'docs', 'logs'] as const).map((tab) => (
+          {tabs.map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -400,14 +409,16 @@ export default function DeveloperPage() {
                     <Button variant="primary" onClick={() => setShowCreateApiKeyDialog(true)}>
                       Create API Key
                     </Button>
-                    <Button variant="primary" onClick={() => setShowCreateWebhookDialog(true)}>
-                      Create Webhook
-                    </Button>
+                    {backendCapabilities.developer.webhooks && (
+                      <Button variant="primary" onClick={() => setShowCreateWebhookDialog(true)}>
+                        Create Webhook
+                      </Button>
+                    )}
                     <Button variant="primary" onClick={() => setShowCreateOAuthDialog(true)}>
                       Create OAuth App
                     </Button>
-                    <Button variant="secondary" onClick={() => window.open('/api/v1/docs', '_blank')}>
-                      View API Docs
+                    <Button variant="secondary" onClick={() => setActiveTab('docs')}>
+                      View API Guide
                     </Button>
                   </>
                 )}
@@ -476,20 +487,17 @@ export default function DeveloperPage() {
       {/* Webhooks Tab */}
       {activeTab === 'webhooks' && (
         <div className="space-y-6">
-          <div className="flex items-center justify-end">
-            {canManage && (
-              <Button variant="primary" onClick={() => setShowCreateWebhookDialog(true)}>
-                Create Webhook
-              </Button>
-            )}
-          </div>
-
           <Card>
             <CardHeader>
               <CardTitle>Webhooks</CardTitle>
             </CardHeader>
             <CardContent>
-              {webhooksLoading ? (
+              {!backendCapabilities.developer.webhooks ? (
+                <EmptyState
+                  title="Webhooks Not Available"
+                  body="The current backend deployment does not expose developer webhook management endpoints."
+                />
+              ) : webhooksLoading ? (
                 <SkeletonLoader width="100%" height="400px" variant="rect" />
               ) : webhooks && webhooks.length > 0 ? (
                 <DataTable
@@ -558,9 +566,12 @@ export default function DeveloperPage() {
                     Use your API keys to authenticate requests to the RetailIQ API. 
                     Include the key in the Authorization header: <code>Bearer YOUR_API_KEY</code>
                   </p>
-                  <Button variant="primary" onClick={() => window.open('/api/v1/docs', '_blank')}>
-                    View Full Documentation
-                  </Button>
+                  {!backendCapabilities.developer.standaloneDocs && (
+                    <p className="text-sm text-gray-500">
+                      This backend does not publish a standalone `/api/v1/docs` route, so this in-app guide is the
+                      supported documentation surface for deployment.
+                    </p>
+                  )}
                 </div>
                 
                 <div>

@@ -32,6 +32,7 @@ import {
   useSendTestWhatsAppMessageMutation
 } from '@/hooks/whatsapp';
 import { authStore } from '@/stores/authStore';
+import { backendCapabilities } from '@/config/backendCapabilities';
 import type { Column } from '@/components/ui/DataTable';
 import type { WhatsAppMessage, WhatsAppCampaign, WhatsAppTemplate } from '@/api/whatsapp';
 import { formatDate } from '@/utils/dates';
@@ -79,6 +80,13 @@ export default function WhatsAppPage() {
   // Check if user is owner or staff
   const user = authStore.getState().user;
   const canManage = user?.role === 'owner' || user?.role === 'staff';
+  const tabs = ([
+    'overview',
+    'messages',
+    'templates',
+    ...(backendCapabilities.whatsapp.campaigns ? (['campaigns'] as const) : []),
+    'settings',
+  ] as const);
 
   // Queries
   const { data: config, isLoading: configLoading, error: configError } = useWhatsAppConfigQuery();
@@ -404,7 +412,7 @@ export default function WhatsAppPage() {
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-6">
         <nav className="-mb-px flex space-x-8">
-          {(['overview', 'messages', 'templates', 'campaigns', 'settings'] as const).map((tab) => (
+          {tabs.map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -482,10 +490,10 @@ export default function WhatsAppPage() {
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm font-medium text-gray-500">Active Campaigns</CardTitle>
+                <CardTitle className="text-sm font-medium text-gray-500">Templates</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{campaigns?.filter(c => c.status !== 'COMPLETED').length || 0}</div>
+                <div className="text-2xl font-bold">{templates?.length || 0}</div>
               </CardContent>
             </Card>
           </div>
@@ -499,18 +507,10 @@ export default function WhatsAppPage() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {canManage && (
                   <>
-                    <Button variant="primary" onClick={() => setShowSendMessageDialog(true)}>
-                      Send Message
-                    </Button>
-                    <Button variant="primary" onClick={() => setShowCreateTemplateDialog(true)}>
-                      Create Template
-                    </Button>
-                    <Button variant="primary" onClick={() => setShowCreateCampaignDialog(true)}>
-                      Create Campaign
-                    </Button>
-                    <Button variant="secondary" onClick={() => setShowOptDialog(true)}>
-                      Manage Opt-in/Out
-                    </Button>
+                    <div className="col-span-full rounded-md bg-gray-50 p-4 text-sm text-gray-600">
+                      This deployment supports WhatsApp configuration, template visibility, and delivery logs. Message
+                      sending, template creation, campaigns, and opt-in management are not exposed by the backend.
+                    </div>
                   </>
                 )}
               </div>
@@ -529,7 +529,7 @@ export default function WhatsAppPage() {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="max-w-sm"
             />
-            {canManage && (
+            {canManage && backendCapabilities.whatsapp.arbitraryMessaging && (
               <Button variant="primary" onClick={() => setShowSendMessageDialog(true)}>
                 Send Message
               </Button>
@@ -563,7 +563,7 @@ export default function WhatsAppPage() {
       {activeTab === 'templates' && (
         <div className="space-y-6">
           <div className="flex items-center justify-end">
-            {canManage && (
+            {canManage && backendCapabilities.whatsapp.templateCreation && (
               <Button variant="primary" onClick={() => setShowCreateTemplateDialog(true)}>
                 Create Template
               </Button>
@@ -596,20 +596,17 @@ export default function WhatsAppPage() {
       {/* Campaigns Tab */}
       {activeTab === 'campaigns' && (
         <div className="space-y-6">
-          <div className="flex items-center justify-end">
-            {canManage && (
-              <Button variant="primary" onClick={() => setShowCreateCampaignDialog(true)}>
-                Create Campaign
-              </Button>
-            )}
-          </div>
-
           <Card>
             <CardHeader>
               <CardTitle>Campaigns</CardTitle>
             </CardHeader>
             <CardContent>
-              {campaignsLoading ? (
+              {!backendCapabilities.whatsapp.campaigns ? (
+                <EmptyState
+                  title="Campaigns Not Available"
+                  body="The deployed backend does not implement WhatsApp campaign management endpoints."
+                />
+              ) : campaignsLoading ? (
                 <SkeletonLoader width="100%" height="400px" variant="rect" />
               ) : campaigns && campaigns.length > 0 ? (
                 <DataTable
@@ -654,7 +651,7 @@ export default function WhatsAppPage() {
 
       {/* Send Message Dialog */}
       <ConfirmDialog
-        open={showSendMessageDialog}
+        open={backendCapabilities.whatsapp.arbitraryMessaging && showSendMessageDialog}
         title="Send Message"
         body="Compose your WhatsApp message"
         confirmLabel={sendMessageMutation.isPending ? 'Sending...' : 'Send'}
@@ -674,7 +671,7 @@ export default function WhatsAppPage() {
 
       {/* Create Template Dialog */}
       <ConfirmDialog
-        open={showCreateTemplateDialog}
+        open={backendCapabilities.whatsapp.templateCreation && showCreateTemplateDialog}
         title="Create Template"
         body="Create a new WhatsApp message template"
         confirmLabel={createTemplateMutation.isPending ? 'Creating...' : 'Create'}
@@ -692,7 +689,7 @@ export default function WhatsAppPage() {
 
       {/* Create Campaign Dialog */}
       <ConfirmDialog
-        open={showCreateCampaignDialog}
+        open={backendCapabilities.whatsapp.campaigns && showCreateCampaignDialog}
         title="Create Campaign"
         body="Create a new WhatsApp campaign"
         confirmLabel={createCampaignMutation.isPending ? 'Creating...' : 'Create'}
@@ -711,7 +708,7 @@ export default function WhatsAppPage() {
 
       {/* Delete Campaign Dialog */}
       <ConfirmDialog
-        open={showDeleteCampaignDialog}
+        open={backendCapabilities.whatsapp.campaigns && showDeleteCampaignDialog}
         title="Delete Campaign"
         body={`Are you sure you want to delete campaign "${selectedCampaign?.name}"?`}
         confirmLabel="Delete"
@@ -724,7 +721,7 @@ export default function WhatsAppPage() {
 
       {/* Opt-in/Out Dialog */}
       <ConfirmDialog
-        open={showOptDialog}
+        open={backendCapabilities.whatsapp.optInManagement && showOptDialog}
         title="Manage Customer Opt-in/Out"
         body="Enter customer phone number and select action"
         confirmLabel={optInMutation.isPending || optOutMutation.isPending ? 'Processing...' : 'Submit'}
