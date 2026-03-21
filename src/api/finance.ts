@@ -156,6 +156,12 @@ interface RawLedgerEntry {
   created_at?: string;
 }
 
+interface RawPaymentTransaction {
+  payment_id?: string | number;
+  status?: string;
+  net_amount?: number;
+}
+
 const nowIso = () => new Date().toISOString();
 
 const mapKycStatus = (status?: string): KYCRecord['status'] => {
@@ -298,10 +304,26 @@ export const financeApi = {
     };
   },
 
-  getCreditTransactions: async (): Promise<CreditTransaction[]> => [],
+  getCreditTransactions: async (): Promise<CreditTransaction[]> => {
+    const response = await request<RawLedgerEntry[]>({
+      url: `${FINANCE_BASE}/ledger`,
+      method: 'GET',
+    });
+
+    return Array.isArray(response)
+      ? response.map((entry) => ({
+          id: String(entry.id),
+          type: entry.type === 'DEBIT' ? 'DEBIT' : entry.type === 'PAYMENT' ? 'PAYMENT' : 'CREDIT',
+          amount: Number(entry.amount ?? 0),
+          description: entry.description ?? 'Ledger entry',
+          created_at: entry.created_at ?? nowIso(),
+          balance_after: Number(entry.amount ?? 0),
+        }))
+      : [];
+  },
 
   repayCredit: async (amount: number): Promise<CreditTransaction> => {
-    const response = await request<{ payment_id?: string | number; status?: string; net_amount?: number }>({
+    const response = await request<RawPaymentTransaction>({
       url: `${FINANCE_BASE}/payments/process`,
       method: 'POST',
       data: {
@@ -325,6 +347,18 @@ export const financeApi = {
   getLoanApplications: async (): Promise<LoanApplication[]> => {
     const response = await request<RawLoanApplication[]>({ url: `${FINANCE_BASE}/loans`, method: 'GET' });
     return Array.isArray(response) ? response.map(mapLoan) : [];
+  },
+
+  disburseLoan: async (loanId: string): Promise<{ ledger_txn_id?: string; message: string }> => {
+    const response = await request<{ ledger_txn_id?: string; message?: string }>({
+      url: `${FINANCE_BASE}/loans/${loanId}/disburse`,
+      method: 'POST',
+    });
+
+    return {
+      ledger_txn_id: response.ledger_txn_id,
+      message: response.message ?? 'Loan disbursed',
+    };
   },
 
   applyForLoan: async (data: LoanApplicationRequest): Promise<LoanApplication> => {
@@ -448,7 +482,7 @@ export const financeApi = {
     method: string;
     reference?: string;
   }): Promise<TreasuryTransaction> => {
-    const response = await request<{ payment_id?: string | number; status?: string; net_amount?: number }>({
+    const response = await request<RawPaymentTransaction>({
       url: `${FINANCE_BASE}/payments/process`,
       method: 'POST',
       data: {

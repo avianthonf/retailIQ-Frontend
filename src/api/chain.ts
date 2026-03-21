@@ -166,13 +166,22 @@ const mapSuggestions = (dashboard: RawChainDashboard): TransferSuggestion[] =>
 
 export const chainApi = {
   createGroup: async (data: CreateChainGroupRequest): Promise<ChainGroup> => {
-    const response = await request<{ group_id?: string }>({
+    const response = await request<{ group_id?: string; name?: string }>({
       url: `${CHAIN_BASE}/groups`,
       method: 'POST',
       data,
     });
 
-    return chainApi.getGroup(String(response.group_id ?? ''));
+    const chainId = String(response.group_id ?? '');
+    return {
+      chain_id: chainId,
+      name: response.name ?? data.name,
+      description: data.description,
+      owner_id: '',
+      created_at: nowIso(),
+      updated_at: nowIso(),
+      member_stores: [],
+    };
   },
 
   getGroup: async (chainId: string): Promise<ChainGroup> => {

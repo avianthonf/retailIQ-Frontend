@@ -18,8 +18,8 @@ export const backendCapabilities = {
     recommendations: false,
   },
   finance: {
-    kycSubmission: false,
-    loanApplications: false,
+    kycSubmission: true,
+    loanApplications: true,
   },
   purchaseOrders: {
     draftEditing: false,

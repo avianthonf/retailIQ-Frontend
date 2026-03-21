@@ -133,6 +133,20 @@ export const useApplyForLoanMutation = () => {
   });
 };
 
+export const useDisburseLoanMutation = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (loanId: string) => financeApi.financeApi.disburseLoan(loanId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: financeKeys.loanApplications() });
+      queryClient.invalidateQueries({ queryKey: financeKeys.accounts() });
+      queryClient.invalidateQueries({ queryKey: financeKeys.ledger() });
+      queryClient.invalidateQueries({ queryKey: financeKeys.treasuryTransactions() });
+    },
+  });
+};
+
 // Accounts
 export const useFinancialAccountsQuery = () => {
   return useQuery({

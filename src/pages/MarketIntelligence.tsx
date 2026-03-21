@@ -1,742 +1,300 @@
-/**
- * src/pages/MarketIntelligence.tsx
- * Market Intelligence Dashboard
- */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { PageFrame } from '@/components/layout/PageFrame';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { DataTable } from '@/components/ui/DataTable';
+import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
-import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
-import { 
-  useMarketSummaryQuery,
-  usePriceSignalsQuery,
-  usePriceIndicesQuery,
-  useMarketAlertsQuery,
-  useCompetitorsQuery,
-  useDemandForecastsQuery,
-  useMarketTrendsQuery,
-  useRecommendationsQuery,
-  useAcknowledgeAlertMutation,
-  useComputePriceIndexMutation,
-  useGenerateForecastMutation,
-  useExportSignalsMutation,
-  useExportForecastsMutation
-} from '@/hooks/marketIntelligence';
-import { authStore } from '@/stores/authStore';
-import { backendCapabilities } from '@/config/backendCapabilities';
-import type { Column } from '@/components/ui/DataTable';
-import type { PriceSignal, MarketAlert, CompetitorAnalysis, DemandForecast } from '@/api/marketIntelligence';
-import { formatCurrency } from '@/utils/numbers';
-import { formatDate } from '@/utils/dates';
+import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
+import { useAcknowledgeAlertMutation, useComputePriceIndexMutation, useMarketAlertsQuery, useMarketSummaryQuery, usePriceIndicesQuery, usePriceSignalsQuery } from '@/hooks/marketIntelligence';
+import { uiStore } from '@/stores/uiStore';
 import { normalizeApiError } from '@/utils/errors';
-import type { ApiError } from '@/types/api';
+import { formatCurrency } from '@/utils/numbers';
+import type { MarketAlert, PriceIndex, PriceSignal } from '@/api/marketIntelligence';
 
 export default function MarketIntelligencePage() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'signals' | 'competitors' | 'forecasts' | 'alerts' | 'recommendations'>('overview');
-  const [selectedRegion, setSelectedRegion] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedAlert, setSelectedAlert] = useState<MarketAlert | null>(null);
-  const [showAcknowledgeDialog, setShowAcknowledgeDialog] = useState(false);
-  const [_showComputeIndexDialog, _setShowComputeIndexDialog] = useState(false);
-  const [showGenerateForecastDialog, setShowGenerateForecastDialog] = useState(false);
+  const addToast = uiStore((state) => state.addToast);
+  const [activeTab, setActiveTab] = useState<'overview' | 'signals' | 'indices' | 'alerts'>('overview');
+  const [summaryRegion, setSummaryRegion] = useState('');
+  const [signalProductId, setSignalProductId] = useState('');
+  const [indexCategory, setIndexCategory] = useState('');
+  const [indexRegion, setIndexRegion] = useState('');
+  const [indexPeriod, setIndexPeriod] = useState('');
+  const [indexProductIds, setIndexProductIds] = useState('');
 
-  // Form states
-  const [indexForm, setIndexForm] = useState({
-    category: '',
-    region: '',
-    period: '',
-    product_ids: '',
-  });
-  const [forecastForm, setForecastForm] = useState({
-    product_id: '',
-    forecast_period: '',
-  });
+  const summaryQuery = useMarketSummaryQuery(summaryRegion || undefined);
+  const signalsQuery = usePriceSignalsQuery(signalProductId ? { product_id: signalProductId } : undefined);
+  const indicesQuery = usePriceIndicesQuery();
+  const alertsQuery = useMarketAlertsQuery();
 
-  // Check if user is owner or staff
-  const user = authStore.getState().user;
-  const canManage = user?.role === 'owner' || user?.role === 'staff';
-  const tabs = ([
-    'overview',
-    'signals',
-    ...(backendCapabilities.marketIntelligence.competitors ? (['competitors'] as const) : []),
-    ...(backendCapabilities.marketIntelligence.forecasts ? (['forecasts'] as const) : []),
-    'alerts',
-    ...(backendCapabilities.marketIntelligence.recommendations ? (['recommendations'] as const) : []),
-  ] as const);
-
-  // Queries
-  const { data: summary, isLoading: summaryLoading, error: summaryError } = useMarketSummaryQuery(selectedRegion || undefined);
-  const { data: signals, isLoading: signalsLoading } = usePriceSignalsQuery(
-    searchQuery ? { product_id: searchQuery } : undefined
-  );
-  const { data: _indices, isLoading: _indicesLoading } = usePriceIndicesQuery();
-  const { data: alerts, isLoading: alertsLoading } = useMarketAlertsQuery();
-  const { data: competitors, isLoading: competitorsLoading } = useCompetitorsQuery(selectedRegion || undefined);
-  const { data: forecasts, isLoading: forecastsLoading } = useDemandForecastsQuery();
-  const { data: _trends, isLoading: _trendsLoading } = useMarketTrendsQuery();
-  const { data: recommendations, isLoading: _recommendationsLoading } = useRecommendationsQuery();
-
-  // Mutations
-  const acknowledgeMutation = useAcknowledgeAlertMutation();
+  const acknowledgeAlertMutation = useAcknowledgeAlertMutation();
   const computeIndexMutation = useComputePriceIndexMutation();
-  const generateForecastMutation = useGenerateForecastMutation();
-  const exportSignalsMutation = useExportSignalsMutation();
-  const exportForecastsMutation = useExportForecastsMutation();
 
-  // Handlers
-  const handleAcknowledgeAlert = async () => {
-    if (!selectedAlert) return;
-    
-    try {
-      await acknowledgeMutation.mutateAsync(selectedAlert.id);
-      setShowAcknowledgeDialog(false);
-      setSelectedAlert(null);
-      alert('Alert acknowledged successfully');
-    } catch {
-      // Error handled by mutation
+  const signalColumns = useMemo<Column<PriceSignal>[]>(
+    () => [
+      { key: 'product_name', header: 'Signal', render: (row) => row.product_name || row.id },
+      { key: 'region', header: 'Region', render: (row) => row.region || 'Unknown' },
+      { key: 'current_price', header: 'Observed Value', render: (row) => formatCurrency(row.current_price) },
+      { key: 'trend', header: 'Trend', render: (row) => row.trend },
+      { key: 'confidence', header: 'Confidence', render: (row) => `${Math.round(row.confidence * 100)}%` },
+    ],
+    [],
+  );
+
+  const indexColumns = useMemo<Column<PriceIndex>[]>(
+    () => [
+      { key: 'category', header: 'Category', render: (row) => row.category },
+      { key: 'region', header: 'Region', render: (row) => row.region || 'Unknown' },
+      { key: 'index_value', header: 'Index', render: (row) => row.index_value.toFixed(2) },
+      { key: 'change_percent', header: 'Change vs Base', render: (row) => `${row.change_percent.toFixed(2)}%` },
+      { key: 'period', header: 'Period', render: (row) => row.period || 'Current' },
+    ],
+    [],
+  );
+
+  const alertColumns = useMemo<Column<MarketAlert>[]>(
+    () => [
+      { key: 'type', header: 'Type', render: (row) => row.type.replace(/_/g, ' ') },
+      { key: 'severity', header: 'Severity', render: (row) => row.severity },
+      { key: 'title', header: 'Title', render: (row) => row.title },
+      { key: 'message', header: 'Message', render: (row) => row.message || '-' },
+      { key: 'status', header: 'Status', render: (row) => (row.is_acknowledged ? 'Acknowledged' : 'Pending') },
+      {
+        key: 'actions',
+        header: 'Actions',
+        render: (row) => (
+          row.is_acknowledged ? (
+            'Done'
+          ) : (
+            <Button
+              size="sm"
+              onClick={() => {
+                void acknowledgeAlertMutation.mutateAsync(row.id, {
+                  onSuccess: () => addToast({ title: 'Alert acknowledged', message: row.title, variant: 'success' }),
+                  onError: (error) => addToast({ title: 'Acknowledge failed', message: normalizeApiError(error).message, variant: 'error' }),
+                });
+              }}
+              loading={acknowledgeAlertMutation.isPending}
+            >
+              Acknowledge
+            </Button>
+          )
+        ),
+      },
+    ],
+    [acknowledgeAlertMutation, addToast],
+  );
+
+  const onComputeIndex = async () => {
+    if (!indexCategory.trim() || !indexRegion.trim() || !indexPeriod.trim()) {
+      addToast({ title: 'Missing inputs', message: 'Category, region, and period are required to compute an index.', variant: 'warning' });
+      return;
     }
-  };
 
-  const _handleComputeIndex = async () => {
-    if (!indexForm.category || !indexForm.region || !indexForm.period) return;
-    
     try {
-      await computeIndexMutation.mutateAsync({
-        ...indexForm,
-        product_ids: indexForm.product_ids.split(',').map(id => id.trim()).filter(Boolean),
+      const result = await computeIndexMutation.mutateAsync({
+        category: indexCategory.trim(),
+        region: indexRegion.trim(),
+        period: indexPeriod.trim(),
+        product_ids: indexProductIds.split(',').map((value) => value.trim()).filter(Boolean),
       });
-      _setShowComputeIndexDialog(false);
-      setIndexForm({ category: '', region: '', period: '', product_ids: '' });
-      alert('Price index computed successfully');
-    } catch {
-      // Error handled by mutation
+      addToast({
+        title: 'Index computed',
+        message: `${result.category} in ${result.region} is now ${result.index_value.toFixed(2)}.`,
+        variant: 'success',
+      });
+      setIndexProductIds('');
+    } catch (error) {
+      addToast({ title: 'Index compute failed', message: normalizeApiError(error).message, variant: 'error' });
     }
   };
 
-  const handleGenerateForecast = async () => {
-    if (!forecastForm.product_id || !forecastForm.forecast_period) return;
-    
-    try {
-      await generateForecastMutation.mutateAsync(forecastForm);
-      setShowGenerateForecastDialog(false);
-      setForecastForm({ product_id: '', forecast_period: '' });
-      alert('Forecast generated successfully');
-    } catch {
-      // Error handled by mutation
-    }
-  };
-
-  const handleExportSignals = async (format: 'csv' | 'excel' | 'json') => {
-    try {
-      const blob = await exportSignalsMutation.mutateAsync({ format });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `price-signals.${format}`;
-      a.click();
-      window.URL.revokeObjectURL(url);
-    } catch {
-      // Error handled by mutation
-    }
-  };
-
-  const handleExportForecasts = async (format: 'csv' | 'excel' | 'json') => {
-    try {
-      const blob = await exportForecastsMutation.mutateAsync({ format });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `demand-forecasts.${format}`;
-      a.click();
-      window.URL.revokeObjectURL(url);
-    } catch {
-      // Error handled by mutation
-    }
-  };
-
-  // Signal columns
-  const signalColumns: Column<PriceSignal>[] = [
-    {
-      key: 'product_name',
-      header: 'Product',
-      render: (signal) => (
-        <div>
-          <div className="font-medium">{signal.product_name}</div>
-          <div className="text-sm text-gray-500">{signal.sku}</div>
-        </div>
-      ),
-    },
-    {
-      key: 'current_price',
-      header: 'Our Price',
-      render: (signal) => formatCurrency(signal.current_price),
-    },
-    {
-      key: 'market_price',
-      header: 'Market Price',
-      render: (signal) => formatCurrency(signal.market_price),
-    },
-    {
-      key: 'price_difference_percent',
-      header: 'Difference',
-      render: (signal) => (
-        <div className="flex items-center space-x-2">
-          <span className={signal.price_difference_percent > 0 ? 'text-green-600' : signal.price_difference_percent < 0 ? 'text-red-600' : 'text-gray-600'}>
-            {signal.price_difference_percent > 0 ? '+' : ''}{signal.price_difference_percent.toFixed(1)}%
-          </span>
-          <Badge variant={signal.trend === 'UP' ? 'success' : signal.trend === 'DOWN' ? 'danger' : 'secondary'}>
-            {signal.trend}
-          </Badge>
-        </div>
-      ),
-    },
-    {
-      key: 'confidence',
-      header: 'Confidence',
-      render: (signal) => `${(signal.confidence * 100).toFixed(0)}%`,
-    },
-    {
-      key: 'region',
-      header: 'Region',
-      render: (signal) => signal.region,
-    },
-  ];
-
-  // Alert columns
-  const alertColumns: Column<MarketAlert>[] = [
-    {
-      key: 'type',
-      header: 'Type',
-      render: (alert) => (
-        <Badge variant="primary">{alert.type.replace('_', ' ')}</Badge>
-      ),
-    },
-    {
-      key: 'severity',
-      header: 'Severity',
-      render: (alert) => (
-        <Badge variant={alert.severity === 'CRITICAL' ? 'danger' : alert.severity === 'HIGH' ? 'warning' : 'secondary'}>
-          {alert.severity}
-        </Badge>
-      ),
-    },
-    {
-      key: 'title',
-      header: 'Title',
-      render: (alert) => alert.title,
-    },
-    {
-      key: 'product_name',
-      header: 'Product',
-      render: (alert) => alert.product_name || '-',
-    },
-    {
-      key: 'created_at',
-      header: 'Created',
-      render: (alert) => formatDate(alert.created_at),
-    },
-    {
-      key: 'is_acknowledged',
-      header: 'Status',
-      render: (alert) => (
-        <Badge variant={alert.is_acknowledged ? 'success' : 'warning'}>
-          {alert.is_acknowledged ? 'Acknowledged' : 'Pending'}
-        </Badge>
-      ),
-    },
-    {
-      key: 'actions',
-      header: 'Actions',
-      render: (alert) => (
-        !alert.is_acknowledged && canManage && (
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => {
-              setSelectedAlert(alert);
-              setShowAcknowledgeDialog(true);
-            }}
-          >
-            Acknowledge
-          </Button>
-        )
-      ),
-    },
-  ];
-
-  // Competitor columns
-  const competitorColumns: Column<CompetitorAnalysis>[] = [
-    {
-      key: 'name',
-      header: 'Competitor',
-      render: (competitor) => (
-        <div>
-          <div className="font-medium">{competitor.name}</div>
-          <div className="text-sm text-gray-500">{competitor.region}</div>
-        </div>
-      ),
-    },
-    {
-      key: 'total_products',
-      header: 'Products',
-      render: (competitor) => competitor.total_products.toLocaleString(),
-    },
-    {
-      key: 'average_pricing',
-      header: 'Avg Price',
-      render: (competitor) => formatCurrency(competitor.average_pricing),
-    },
-    {
-      key: 'pricing_strategy',
-      header: 'Strategy',
-      render: (competitor) => (
-        <Badge variant="primary">{competitor.pricing_strategy}</Badge>
-      ),
-    },
-    {
-      key: 'market_share',
-      header: 'Market Share',
-      render: (competitor) => `${competitor.market_share.toFixed(1)}%`,
-    },
-    {
-      key: 'last_analyzed',
-      header: 'Last Analyzed',
-      render: (competitor) => formatDate(competitor.last_analyzed),
-    },
-  ];
-
-  // Forecast columns
-  const forecastColumns: Column<DemandForecast>[] = [
-    {
-      key: 'product_name',
-      header: 'Product',
-      render: (forecast) => (
-        <div>
-          <div className="font-medium">{forecast.product_name}</div>
-          <div className="text-sm text-gray-500">{forecast.sku}</div>
-        </div>
-      ),
-    },
-    {
-      key: 'current_demand',
-      header: 'Current Demand',
-      render: (forecast) => forecast.current_demand.toLocaleString(),
-    },
-    {
-      key: 'forecast_demand',
-      header: 'Forecast Demand',
-      render: (forecast) => (
-        <div className="flex items-center space-x-2">
-          <span>{forecast.forecast_demand.toLocaleString()}</span>
-          <span className={forecast.forecast_demand > forecast.current_demand ? 'text-green-600' : 'text-red-600'}>
-            ({forecast.forecast_demand > forecast.current_demand ? '+' : ''}{((forecast.forecast_demand - forecast.current_demand) / forecast.current_demand * 100).toFixed(1)}%)
-          </span>
-        </div>
-      ),
-    },
-    {
-      key: 'forecast_period',
-      header: 'Period',
-      render: (forecast) => forecast.forecast_period,
-    },
-    {
-      key: 'confidence_score',
-      header: 'Confidence',
-      render: (forecast) => `${(forecast.confidence_score * 100).toFixed(0)}%`,
-    },
-    {
-      key: 'created_at',
-      header: 'Created',
-      render: (forecast) => formatDate(forecast.created_at),
-    },
-  ];
-
-  if (summaryLoading) {
+  if (summaryQuery.isLoading) {
     return (
       <PageFrame title="Market Intelligence">
-        <div className="space-y-6">
-          <SkeletonLoader width="100%" height="200px" variant="rect" />
-          <SkeletonLoader width="100%" height="400px" variant="rect" />
-        </div>
+        <SkeletonLoader variant="rect" height={320} />
       </PageFrame>
     );
   }
 
-  if (summaryError) {
+  if (summaryQuery.isError) {
     return (
       <PageFrame title="Market Intelligence">
-        <ErrorState error={normalizeApiError(summaryError as unknown as ApiError)} />
+        <ErrorState error={normalizeApiError(summaryQuery.error)} onRetry={() => void summaryQuery.refetch()} />
       </PageFrame>
     );
   }
+
+  const summary = summaryQuery.data ?? [];
+  const alerts = alertsQuery.data?.alerts ?? [];
+  const signals = signalsQuery.data?.signals ?? [];
+  const indices = indicesQuery.data ?? [];
 
   return (
-    <PageFrame title="Market Intelligence">
-      {/* Tabs */}
-      <div className="border-b border-gray-200 mb-6">
-        <nav className="-mb-px flex space-x-8">
-          {tabs.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`py-2 px-1 border-b-2 font-medium text-sm capitalize ${
-                activeTab === tab
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
-        </nav>
-      </div>
-
-      {/* Overview Tab */}
-      {activeTab === 'overview' && summary && (
-        <div className="space-y-6">
-          {(!backendCapabilities.marketIntelligence.competitors
-            || !backendCapabilities.marketIntelligence.forecasts
-            || !backendCapabilities.marketIntelligence.recommendations) && (
-            <Card>
-              <CardContent className="py-4 text-sm text-gray-600">
-                The deployed backend currently supports market summaries, price signals, and alert acknowledgement.
-                Competitor analysis, demand forecasts, and recommendation endpoints are not available in this
-                deployment.
-              </CardContent>
-            </Card>
-          )}
-          {/* Region Selector */}
-          <div className="flex items-center space-x-4">
-            <Input
-              placeholder="Filter by region..."
-              value={selectedRegion}
-              onChange={(e) => setSelectedRegion(e.target.value)}
-              className="max-w-sm"
-            />
-          </div>
-
-          {/* Metrics Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            {summary.map((region, idx) => (
-              <Card key={idx}>
-                <CardHeader>
-                  <CardTitle className="text-sm font-medium text-gray-500">{region.region}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-sm">Stores</span>
-                      <span className="font-medium">{region.total_stores}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm">Avg Price</span>
-                      <span className="font-medium">{formatCurrency(region.average_price)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm">Demand Index</span>
-                      <span className="font-medium">{region.demand_index.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm">Competitors</span>
-                      <span className="font-medium">{region.competitor_count}</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+    <PageFrame title="Market Intelligence" subtitle="Live market summaries, price signals, price index computation, and alert operations backed by the production API.">
+      <div className="space-y-6">
+        <div className="border-b border-gray-200">
+          <nav className="-mb-px flex gap-6">
+            {(['overview', 'signals', 'indices', 'alerts'] as const).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setActiveTab(tab)}
+                className={`border-b-2 px-1 py-2 text-sm font-medium capitalize ${
+                  activeTab === tab
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                }`}
+              >
+                {tab}
+              </button>
             ))}
-          </div>
+          </nav>
+        </div>
 
-          {/* Recent Alerts */}
-          {alerts && alerts.alerts.length > 0 && (
+        {activeTab === 'overview' ? (
+          <div className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Recent Alerts</CardTitle>
+                <CardTitle>Summary Filter</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {alerts.alerts.slice(0, 5).map((alert) => (
-                    <div key={alert.id} className="flex items-center justify-between p-3 bg-gray-50 rounded">
-                      <div className="flex items-center space-x-3">
-                        <Badge variant={alert.severity === 'CRITICAL' ? 'danger' : 'warning'}>
-                          {alert.severity}
-                        </Badge>
-                        <span className="font-medium">{alert.title}</span>
-                        <span className="text-sm text-gray-500">{formatDate(alert.created_at)}</span>
-                      </div>
-                      {!alert.is_acknowledged && canManage && (
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedAlert(alert);
-                            setShowAcknowledgeDialog(true);
-                          }}
-                        >
-                          Acknowledge
-                        </Button>
-                      )}
-                    </div>
-                  ))}
+              <CardContent className="max-w-sm">
+                <Input label="Region" value={summaryRegion} onChange={(event) => setSummaryRegion(event.target.value)} placeholder="Filter by region" />
+              </CardContent>
+            </Card>
+
+            {summary.length === 0 ? (
+              <EmptyState title="No market summary available" body="The backend returned no market summary rows for the current filter." />
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                {summary.map((row) => (
+                  <Card key={row.region}>
+                    <CardHeader>
+                      <CardTitle className="text-base">{row.region}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2 text-sm">
+                      <div className="flex justify-between"><span>Stores</span><span>{row.total_stores}</span></div>
+                      <div className="flex justify-between"><span>Average price</span><span>{formatCurrency(row.average_price)}</span></div>
+                      <div className="flex justify-between"><span>Demand index</span><span>{row.demand_index.toFixed(2)}</span></div>
+                      <div className="flex justify-between"><span>Competitors</span><span>{row.competitor_count}</span></div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            <div className="grid gap-6 lg:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Latest Indices</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <DataTable columns={indexColumns} data={indices.slice(0, 5)} emptyMessage="No computed price indices yet." />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Open Alerts</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <DataTable columns={alertColumns} data={alerts.slice(0, 5)} emptyMessage="No active market alerts." />
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        ) : null}
+
+        {activeTab === 'signals' ? (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Signal Filter</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+                <Input
+                  label="Product ID"
+                  value={signalProductId}
+                  onChange={(event) => setSignalProductId(event.target.value)}
+                  placeholder="Optional product identifier"
+                />
+                <Button variant="secondary" onClick={() => void signalsQuery.refetch()}>
+                  Refresh signals
+                </Button>
+              </CardContent>
+            </Card>
+
+            {signalsQuery.isLoading ? (
+              <SkeletonLoader variant="rect" height={260} />
+            ) : signalsQuery.isError ? (
+              <ErrorState error={normalizeApiError(signalsQuery.error)} onRetry={() => void signalsQuery.refetch()} />
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Price Signals</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <DataTable columns={signalColumns} data={signals} emptyMessage="No price signals matched the current filter." />
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        ) : null}
+
+        {activeTab === 'indices' ? (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Compute Price Index</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-4 md:grid-cols-2">
+                <Input label="Category ID" value={indexCategory} onChange={(event) => setIndexCategory(event.target.value)} placeholder="Category identifier" />
+                <Input label="Region" value={indexRegion} onChange={(event) => setIndexRegion(event.target.value)} placeholder="Region code or name" />
+                <Input label="Period" value={indexPeriod} onChange={(event) => setIndexPeriod(event.target.value)} placeholder="2026-W12" />
+                <Input label="Product IDs" value={indexProductIds} onChange={(event) => setIndexProductIds(event.target.value)} placeholder="Optional comma-separated product IDs" />
+                <div className="md:col-span-2">
+                  <Button onClick={() => void onComputeIndex()} loading={computeIndexMutation.isPending}>
+                    Compute index
+                  </Button>
                 </div>
               </CardContent>
             </Card>
-          )}
-        </div>
-      )}
 
-      {/* Price Signals Tab */}
-      {activeTab === 'signals' && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <Input
-              placeholder="Search signals..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="max-w-sm"
-            />
-            <div className="flex space-x-2">
-              <Button
-                variant="secondary"
-                onClick={() => handleExportSignals('csv')}
-                loading={exportSignalsMutation.isPending}
-              >
-                Export CSV
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => handleExportSignals('excel')}
-                loading={exportSignalsMutation.isPending}
-              >
-                Export Excel
-              </Button>
-            </div>
-          </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Price Signals</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {signalsLoading ? (
-                <SkeletonLoader width="100%" height="400px" variant="rect" />
-              ) : signals && signals.signals.length > 0 ? (
-                <DataTable
-                  columns={signalColumns}
-                  data={signals.signals}
-                />
-              ) : (
-                <EmptyState
-                  title="No Signals"
-                  body="No price signals found."
-                />
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Competitors Tab */}
-      {activeTab === 'competitors' && (
-        <div className="space-y-6">
-          <div className="flex items-center space-x-4">
-            <Input
-              placeholder="Filter by region..."
-              value={selectedRegion}
-              onChange={(e) => setSelectedRegion(e.target.value)}
-              className="max-w-sm"
-            />
-          </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Competitor Analysis</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {!backendCapabilities.marketIntelligence.competitors ? (
-                <EmptyState
-                  title="Competitor Analysis Not Available"
-                  body="The deployed backend does not expose competitor analysis endpoints."
-                />
-              ) : competitorsLoading ? (
-                <SkeletonLoader width="100%" height="400px" variant="rect" />
-              ) : competitors && competitors.length > 0 ? (
-                <DataTable
-                  columns={competitorColumns}
-                  data={competitors}
-                />
-              ) : (
-                <EmptyState
-                  title="No Competitors"
-                  body="No competitor data found."
-                />
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Forecasts Tab */}
-      {activeTab === 'forecasts' && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div className="flex space-x-2">
-              {canManage && backendCapabilities.marketIntelligence.forecasts && (
-                <Button variant="primary" onClick={() => setShowGenerateForecastDialog(true)}>
-                  Generate Forecast
-                </Button>
-              )}
-            </div>
-            <div className="flex space-x-2">
-              {backendCapabilities.marketIntelligence.forecasts && (
-                <>
-                  <Button
-                    variant="secondary"
-                    onClick={() => handleExportForecasts('csv')}
-                    loading={exportForecastsMutation.isPending}
-                  >
-                    Export CSV
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    onClick={() => handleExportForecasts('excel')}
-                    loading={exportForecastsMutation.isPending}
-                  >
-                    Export Excel
-                  </Button>
-                </>
-              )}
-            </div>
-          </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Demand Forecasts</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {forecastsLoading ? (
-                <SkeletonLoader width="100%" height="400px" variant="rect" />
-              ) : forecasts && forecasts.length > 0 ? (
-                <DataTable
-                  columns={forecastColumns}
-                  data={forecasts}
-                />
-              ) : (
-                <EmptyState
-                  title="No Forecasts"
-                  body="No demand forecasts available."
-                />
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Alerts Tab */}
-      {activeTab === 'alerts' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Market Alerts</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {alertsLoading ? (
-              <SkeletonLoader width="100%" height="400px" variant="rect" />
-            ) : alerts && alerts.alerts.length > 0 ? (
-              <DataTable
-                columns={alertColumns}
-                data={alerts.alerts}
-              />
+            {indicesQuery.isLoading ? (
+              <SkeletonLoader variant="rect" height={260} />
+            ) : indicesQuery.isError ? (
+              <ErrorState error={normalizeApiError(indicesQuery.error)} onRetry={() => void indicesQuery.refetch()} />
             ) : (
-              <EmptyState
-                title="No Alerts"
-                body="No market alerts at this time."
-              />
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Recommendations Tab */}
-      {activeTab === 'recommendations' && recommendations && (
-        <div className="space-y-6">
-          {!backendCapabilities.marketIntelligence.recommendations ? (
-            <Card>
-              <CardContent className="py-4 text-sm text-gray-600">
-                Recommendations are not available from the deployed backend.
-              </CardContent>
-            </Card>
-          ) : (
-            recommendations.map((rec) => (
-              <Card key={rec.id}>
+              <Card>
                 <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg">{rec.title}</CardTitle>
-                    <div className="flex items-center space-x-2">
-                      <Badge variant={rec.priority === 'HIGH' ? 'warning' : 'secondary'}>
-                        {rec.priority}
-                      </Badge>
-                      <Badge variant="primary">{rec.type}</Badge>
-                    </div>
-                  </div>
+                  <CardTitle>Computed Price Indices</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-gray-700 mb-4">{rec.description}</p>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <span className="font-medium">Expected Impact:</span> {rec.expected_impact}
-                    </div>
-                    <div>
-                      <span className="font-medium">Effort Required:</span> {rec.effort_required}
-                    </div>
-                    {rec.due_date && (
-                      <div>
-                        <span className="font-medium">Due Date:</span> {formatDate(rec.due_date)}
-                      </div>
-                    )}
-                    <div>
-                      <span className="font-medium">Status:</span>
-                      <Badge variant={rec.status === 'COMPLETED' ? 'success' : 'warning'}>
-                        {rec.status}
-                      </Badge>
-                    </div>
-                  </div>
+                  <DataTable columns={indexColumns} data={indices} emptyMessage="The backend has not produced any price indices yet." />
                 </CardContent>
               </Card>
-            ))
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        ) : null}
 
-      {/* Acknowledge Alert Dialog */}
-      <ConfirmDialog
-        open={showAcknowledgeDialog}
-        title="Acknowledge Alert"
-        body={`Are you sure you want to acknowledge this alert: "${selectedAlert?.title}"?`}
-        confirmLabel={acknowledgeMutation.isPending ? 'Acknowledging...' : 'Acknowledge'}
-        onConfirm={handleAcknowledgeAlert}
-        onCancel={() => {
-          setShowAcknowledgeDialog(false);
-          setSelectedAlert(null);
-        }}
-      />
-
-      {/* Generate Forecast Dialog */}
-      <ConfirmDialog
-        open={backendCapabilities.marketIntelligence.forecasts && showGenerateForecastDialog}
-        title="Generate Demand Forecast"
-        body="Enter the product details and forecast period"
-        confirmLabel={generateForecastMutation.isPending ? 'Generating...' : 'Generate'}
-        onConfirm={handleGenerateForecast}
-        onCancel={() => {
-          setShowGenerateForecastDialog(false);
-          setForecastForm({ product_id: '', forecast_period: '' });
-        }}
-      />
+        {activeTab === 'alerts' ? (
+          alertsQuery.isLoading ? (
+            <SkeletonLoader variant="rect" height={260} />
+          ) : alertsQuery.isError ? (
+            <ErrorState error={normalizeApiError(alertsQuery.error)} onRetry={() => void alertsQuery.refetch()} />
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Market Alerts</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <DataTable columns={alertColumns} data={alerts} emptyMessage="No active alerts returned by the backend." />
+              </CardContent>
+            </Card>
+          )
+        ) : null}
+      </div>
     </PageFrame>
   );
 }
