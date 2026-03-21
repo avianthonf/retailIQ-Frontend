@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { AuthShell } from '@/components/layout/AuthShell';
 import { verifyOtpSchema, type VerifyOtpFormValues } from '@/types/schemas';
 import { useResendOtpMutation, useVerifyOtpMutation } from '@/hooks/auth';
@@ -17,8 +17,10 @@ import { persistAuthTokens } from '@/utils/session';
 
 export default function VerifyOtpPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
-  const mobileNumber = searchParams.get('mobile_number') ?? '';
+  const locationState = location.state as { mobile_number?: string } | null;
+  const mobileNumber = locationState?.mobile_number ?? searchParams.get('mobile_number') ?? '';
   const redirect = searchParams.get('redirect') ?? '/dashboard';
   const addToast = uiStore((state) => state.addToast);
   const verifyOtpMutation = useVerifyOtpMutation();
@@ -45,7 +47,12 @@ export default function VerifyOtpPage() {
     } catch (error) {
       const apiError = normalizeApiError(error);
       if (apiError.status === 422) {
-        extractFieldErrors(apiError.fields, setError);
+        if (apiError.fields) {
+          extractFieldErrors(apiError.fields, setError);
+          return;
+        }
+
+        setServerMessage(apiError.message);
         return;
       }
 
@@ -55,7 +62,7 @@ export default function VerifyOtpPage() {
 
   const resendOtp = async () => {
     try {
-      const result = await resendOtpMutation.mutateAsync({ mobile_number: mobileNumber || undefined, contact: mobileNumber || undefined });
+      const result = await resendOtpMutation.mutateAsync({ contact: mobileNumber || '' });
       addToast({ title: 'OTP resent', message: `Try again in ${result.resend_after}s.`, variant: 'info' });
     } catch (error) {
       setServerMessage(normalizeApiError(error).message);

@@ -5,10 +5,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as developerApi from '@/api/developer';
 import type { 
-  ApiKey,
-  Webhook,
-  ApiUsageStats,
-  OAuthApplication,
   CreateApiKeyRequest,
   CreateWebhookRequest,
   CreateOAuthApplicationRequest
@@ -19,11 +15,11 @@ export const developerKeys = {
   all: ['developer'] as const,
   apiKeys: () => [...developerKeys.all, 'apiKeys'] as const,
   webhooks: () => [...developerKeys.all, 'webhooks'] as const,
-  usage: (params?: any) => [...developerKeys.all, 'usage', ...(params ? [params] : [])] as const,
+  usage: (params?: Record<string, unknown>) => [...developerKeys.all, 'usage', ...(params ? [params] : [])] as const,
   oauthApplications: () => [...developerKeys.all, 'oauthApplications'] as const,
   documentation: () => [...developerKeys.all, 'documentation'] as const,
   rateLimits: () => [...developerKeys.all, 'rateLimits'] as const,
-  logs: (params?: any) => [...developerKeys.all, 'logs', ...(params ? [params] : [])] as const,
+  logs: (params?: Record<string, unknown>) => [...developerKeys.all, 'logs', ...(params ? [params] : [])] as const,
 };
 
 // API Keys
@@ -156,7 +152,7 @@ export const useUpdateOAuthApplicationMutation = () => {
   return useMutation({
     mutationFn: ({ clientId, data }: { clientId: string; data: Partial<CreateOAuthApplicationRequest> }) =>
       developerApi.developerApi.updateOAuthApplication(clientId, data),
-    onSuccess: (_, { clientId }) => {
+    onSuccess: (_, { clientId: _clientId }) => {
       queryClient.invalidateQueries({ queryKey: developerKeys.oauthApplications() });
     },
   });

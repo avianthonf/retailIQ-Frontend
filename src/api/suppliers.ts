@@ -1,24 +1,28 @@
 /**
  * src/api/suppliers.ts
- * Oracle Document sections consumed: 3.2, 5.2
- * Last item from Section 11 risks addressed here: Store scoping, soft delete
+ * Backend-aligned supplier adapters
  */
-import { apiClient } from './client';
+import { request, unsupportedApi } from './client';
 
-// Supplier types based on Oracle Section 4.1
+const SUPPLIERS_BASE = '/api/v1/suppliers';
+
 export interface Supplier {
   supplier_id: string;
   store_id: string;
   name: string;
-  contact: string;
+  contact_person: string;
   email?: string;
   phone?: string;
   address?: string;
   gst_number?: string;
-  payment_terms?: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  analytics?: {
+    total_orders: number;
+    total_value: number;
+    last_order_date?: string;
+  };
 }
 
 export interface SupplierProduct {
@@ -35,12 +39,11 @@ export interface SupplierProduct {
 
 export interface CreateSupplierRequest {
   name: string;
-  contact: string;
+  contact_person?: string;
   email?: string;
   phone?: string;
   address?: string;
   gst_number?: string;
-  payment_terms?: string;
 }
 
 export interface UpdateSupplierRequest extends Partial<CreateSupplierRequest> {
@@ -61,71 +64,204 @@ export interface SupplierListResponse {
   pages: number;
 }
 
-// ⚠️ RISK [MEDIUM]: Supplier operations must maintain store scoping
+interface RawSupplierListItem {
+  supplier_id?: number | string;
+  name?: string;
+  contact_person?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  gst_number?: string;
+  is_active?: boolean;
+  created_at?: string;
+}
+
+interface RawSupplierDetail {
+  supplier_id?: number | string;
+  name?: string;
+  contact_person?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  gst_number?: string;
+  is_active?: boolean;
+  created_at?: string;
+  analytics?: {
+    avg_lead_time_days?: number;
+    fill_rate_90d?: number;
+  };
+  sourced_products?: Array<{
+    product_id?: string;
+    name?: string;
+    quoted_price?: number;
+    lead_time_days?: number;
+  }>;
+  recent_purchase_orders?: Array<{
+    id?: string;
+    created_at?: string;
+  }>;
+}
+
+const nowIso = () => new Date().toISOString();
+
+const mapListSupplier = (supplier: RawSupplierListItem): Supplier => ({
+  supplier_id: String(supplier.supplier_id ?? ''),
+  store_id: '',
+  name: supplier.name ?? '',
+  contact_person: supplier.contact_person ?? '',
+  email: supplier.email ?? undefined,
+  phone: supplier.phone ?? undefined,
+  address: supplier.address ?? undefined,
+  gst_number: supplier.gst_number ?? undefined,
+  is_active: supplier.is_active ?? true,
+  created_at: supplier.created_at ?? nowIso(),
+  updated_at: supplier.created_at ?? nowIso(),
+  analytics: {
+    total_orders: 0,
+    total_value: 0,
+  },
+});
+
+const mapDetailSupplier = (supplier: RawSupplierDetail): Supplier => ({
+  supplier_id: String(supplier.supplier_id ?? ''),
+  store_id: '',
+  name: supplier.name ?? '',
+  contact_person: supplier.contact_person ?? '',
+  email: supplier.email ?? undefined,
+  phone: supplier.phone ?? undefined,
+  address: supplier.address ?? undefined,
+  gst_number: supplier.gst_number ?? undefined,
+  is_active: supplier.is_active ?? true,
+  created_at: supplier.created_at ?? nowIso(),
+  updated_at: supplier.created_at ?? nowIso(),
+  analytics: {
+    total_orders: supplier.recent_purchase_orders?.length ?? 0,
+    total_value: 0,
+    last_order_date: supplier.recent_purchase_orders?.[0]?.created_at,
+  },
+});
+
+
 export const suppliersApi = {
-  // List suppliers with filters
-  // Oracle: GET /api/v1/suppliers
   listSuppliers: async (params: ListSuppliersRequest = {}): Promise<SupplierListResponse> => {
-    const response = await apiClient.get('/suppliers', { params });
-    return response.data;
+    if (params.is_active === false) {
+      return { suppliers: [], total: 0, page: params.page ?? 1, pages: 0 };
+    }
+
+    const response = await request<RawSupplierListItem[]>({ url: SUPPLIERS_BASE, method: 'GET' });
+    const allSuppliers = Array.isArray(response) ? response.map(mapListSupplier) : [];
+    const filtered = allSuppliers.filter((supplier) => {
+      if (!params.search) {
+        return true;
+      }
+      const query = params.search.toLowerCase();
+      return supplier.name.toLowerCase().includes(query) || supplier.contact_person.toLowerCase().includes(query);
+    });
+
+    const page = params.page ?? 1;
+    const pageSize = params.page_size ?? (filtered.length || 1);
+    const start = (page - 1) * pageSize;
+    const suppliers = filtered.slice(start, start + pageSize);
+
+    return {
+      suppliers,
+      total: filtered.length,
+      page,
+      pages: filtered.length ? Math.ceil(filtered.length / pageSize) : 0,
+    };
   },
 
-  // Get supplier by ID
-  // Oracle: GET /api/v1/suppliers/<id>
   getSupplier: async (supplierId: string): Promise<Supplier> => {
-    const response = await apiClient.get(`/suppliers/${supplierId}`);
-    return response.data;
+    const response = await request<RawSupplierDetail>({ url: `${SUPPLIERS_BASE}/${supplierId}`, method: 'GET' });
+    return mapDetailSupplier(response);
   },
 
-  // Create new supplier
-  // Oracle: POST /api/v1/suppliers
   createSupplier: async (data: CreateSupplierRequest): Promise<Supplier> => {
-    const response = await apiClient.post('/suppliers', data);
-    return response.data;
+    const response = await request<{ supplier_id?: number | string }>({
+      url: SUPPLIERS_BASE,
+      method: 'POST',
+      data: {
+        name: data.name,
+        contact_name: data.contact_person,
+        phone: data.phone,
+        email: data.email,
+        address: data.address,
+        gst_number: data.gst_number,
+      },
+    });
+
+    return suppliersApi.getSupplier(String(response.supplier_id ?? ''));
   },
 
-  // Update supplier
-  // Oracle: PUT /api/v1/suppliers/<id>
   updateSupplier: async (supplierId: string, data: UpdateSupplierRequest): Promise<Supplier> => {
-    const response = await apiClient.put(`/suppliers/${supplierId}`, data);
-    return response.data;
+    await request<{ supplier_id?: number | string }>({
+      url: `${SUPPLIERS_BASE}/${supplierId}`,
+      method: 'PUT',
+      data: {
+        ...(data.name !== undefined ? { name: data.name } : {}),
+        ...(data.contact_person !== undefined ? { contact_name: data.contact_person } : {}),
+        ...(data.phone !== undefined ? { phone: data.phone } : {}),
+        ...(data.email !== undefined ? { email: data.email } : {}),
+        ...(data.address !== undefined ? { address: data.address } : {}),
+        ...(data.gst_number !== undefined ? { gst_number: data.gst_number } : {}),
+        ...(data.is_active !== undefined ? { is_active: data.is_active } : {}),
+      },
+    });
+
+    return suppliersApi.getSupplier(supplierId);
   },
 
-  // Delete supplier (soft delete)
-  // Oracle: DELETE /api/v1/suppliers/<id>
   deleteSupplier: async (supplierId: string): Promise<void> => {
-    await apiClient.delete(`/suppliers/${supplierId}`);
+    await request<{ id?: string }>({ url: `${SUPPLIERS_BASE}/${supplierId}`, method: 'DELETE' });
   },
 
-  // Get supplier products
-  // Oracle: GET /api/v1/suppliers/<id>/products
   getSupplierProducts: async (supplierId: string): Promise<SupplierProduct[]> => {
-    const response = await apiClient.get(`/suppliers/${supplierId}/products`);
-    return response.data.products || [];
+    const supplier = await request<RawSupplierDetail>({ url: `${SUPPLIERS_BASE}/${supplierId}`, method: 'GET' });
+    return Array.isArray(supplier.sourced_products)
+      ? supplier.sourced_products.map((product) => ({
+          supplier_product_id: `${supplierId}:${product.product_id ?? ''}`,
+          supplier_id: supplierId,
+          product_id: String(product.product_id ?? ''),
+          sku_code: product.name ?? String(product.product_id ?? ''),
+          supplier_sku: undefined,
+          cost_price: Number(product.quoted_price ?? 0),
+          min_order_quantity: 1,
+          lead_time_days: Number(product.lead_time_days ?? 0),
+          is_active: true,
+        }))
+      : [];
   },
 
-  // Link product to supplier
-  // Oracle: POST /api/v1/suppliers/<id>/products
   linkProduct: async (supplierId: string, data: Omit<SupplierProduct, 'supplier_product_id' | 'supplier_id'>): Promise<SupplierProduct> => {
-    const response = await apiClient.post(`/suppliers/${supplierId}/products`, data);
-    return response.data;
+    const response = await request<{ id?: string }>({
+      url: `${SUPPLIERS_BASE}/${supplierId}/products`,
+      method: 'POST',
+      data: {
+        product_id: data.product_id,
+        quoted_price: data.cost_price,
+        lead_time_days: data.lead_time_days,
+      },
+    });
+
+    return {
+      supplier_product_id: String(response.id ?? `${supplierId}:${data.product_id}`),
+      supplier_id: supplierId,
+      product_id: data.product_id,
+      sku_code: data.sku_code,
+      supplier_sku: data.supplier_sku,
+      cost_price: data.cost_price,
+      min_order_quantity: data.min_order_quantity,
+      lead_time_days: data.lead_time_days,
+      is_active: data.is_active,
+    };
   },
 
-  // Update supplier product link
-  // Oracle: PUT /api/v1/suppliers/<id>/products/<productId>
-  updateProductLink: async (supplierId: string, productId: string, data: Partial<SupplierProduct>): Promise<SupplierProduct> => {
-    const response = await apiClient.put(`/suppliers/${supplierId}/products/${productId}`, data);
-    return response.data;
-  },
+  updateProductLink: async (_supplierId: string, _productId: string, _data: Partial<SupplierProduct>): Promise<SupplierProduct> =>
+    unsupportedApi('Updating supplier product links'),
 
-  // Remove product link
-  // Oracle: DELETE /api/v1/suppliers/<id>/products/<productId>
-  removeProductLink: async (supplierId: string, productId: string): Promise<void> => {
-    await apiClient.delete(`/suppliers/${supplierId}/products/${productId}`);
-  },
+  removeProductLink: async (_supplierId: string, _productId: string): Promise<void> =>
+    unsupportedApi('Removing supplier product links'),
 
-  // Get supplier analytics
-  // Oracle: GET /api/v1/suppliers/<id>/analytics
   getSupplierAnalytics: async (supplierId: string): Promise<{
     total_orders: number;
     total_value: number;
@@ -133,7 +269,16 @@ export const suppliersApi = {
     last_order_date?: string;
     product_count: number;
   }> => {
-    const response = await apiClient.get(`/suppliers/${supplierId}/analytics`);
-    return response.data;
+    const detail = await request<RawSupplierDetail>({ url: `${SUPPLIERS_BASE}/${supplierId}`, method: 'GET' });
+    const totalOrders = detail.recent_purchase_orders?.length ?? 0;
+    const productCount = detail.sourced_products?.length ?? 0;
+
+    return {
+      total_orders: totalOrders,
+      total_value: 0,
+      avg_order_value: 0,
+      last_order_date: detail.recent_purchase_orders?.[0]?.created_at,
+      product_count: productCount,
+    };
   },
 };

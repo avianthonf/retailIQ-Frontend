@@ -16,20 +16,22 @@ export async function testBackendConnection() {
       data: response.data,
       message: 'Backend is reachable'
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Backend connection failed:', error);
     
+    const err = error as { code?: string; message?: string; response?: { status?: number } };
+    
     // Check if it's a network error
-    if (error.code === 'ECONNREFUSED' || error.message.includes('Network Error')) {
+    if (err.code === 'ECONNREFUSED' || err.message?.includes('Network Error')) {
       return {
         success: false,
         error: 'Backend is not running or unreachable',
-        details: error.message
+        details: err.message
       };
     }
     
     // Check if it's an auth error (backend is running but requires auth)
-    if (error.response?.status === 401) {
+    if (err.response?.status === 401) {
       return {
         success: true,
         message: 'Backend is running but requires authentication',
@@ -40,7 +42,7 @@ export async function testBackendConnection() {
     return {
       success: false,
       error: 'Unexpected error',
-      details: error.message
+      details: err.message ?? String(error)
     };
   }
 }

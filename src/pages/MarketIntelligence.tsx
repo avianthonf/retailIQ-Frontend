@@ -42,7 +42,7 @@ export default function MarketIntelligencePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAlert, setSelectedAlert] = useState<MarketAlert | null>(null);
   const [showAcknowledgeDialog, setShowAcknowledgeDialog] = useState(false);
-  const [showComputeIndexDialog, setShowComputeIndexDialog] = useState(false);
+  const [_showComputeIndexDialog, _setShowComputeIndexDialog] = useState(false);
   const [showGenerateForecastDialog, setShowGenerateForecastDialog] = useState(false);
 
   // Form states
@@ -66,12 +66,12 @@ export default function MarketIntelligencePage() {
   const { data: signals, isLoading: signalsLoading } = usePriceSignalsQuery(
     searchQuery ? { product_id: searchQuery } : undefined
   );
-  const { data: indices, isLoading: indicesLoading } = usePriceIndicesQuery();
+  const { data: _indices, isLoading: _indicesLoading } = usePriceIndicesQuery();
   const { data: alerts, isLoading: alertsLoading } = useMarketAlertsQuery();
   const { data: competitors, isLoading: competitorsLoading } = useCompetitorsQuery(selectedRegion || undefined);
   const { data: forecasts, isLoading: forecastsLoading } = useDemandForecastsQuery();
-  const { data: trends, isLoading: trendsLoading } = useMarketTrendsQuery();
-  const { data: recommendations, isLoading: recommendationsLoading } = useRecommendationsQuery();
+  const { data: _trends, isLoading: _trendsLoading } = useMarketTrendsQuery();
+  const { data: recommendations, isLoading: _recommendationsLoading } = useRecommendationsQuery();
 
   // Mutations
   const acknowledgeMutation = useAcknowledgeAlertMutation();
@@ -94,7 +94,7 @@ export default function MarketIntelligencePage() {
     }
   };
 
-  const handleComputeIndex = async () => {
+  const _handleComputeIndex = async () => {
     if (!indexForm.category || !indexForm.region || !indexForm.period) return;
     
     try {
@@ -102,7 +102,7 @@ export default function MarketIntelligencePage() {
         ...indexForm,
         product_ids: indexForm.product_ids.split(',').map(id => id.trim()).filter(Boolean),
       });
-      setShowComputeIndexDialog(false);
+      _setShowComputeIndexDialog(false);
       setIndexForm({ category: '', region: '', period: '', product_ids: '' });
       alert('Price index computed successfully');
     } catch {

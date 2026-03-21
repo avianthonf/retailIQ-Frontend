@@ -1,59 +1,183 @@
 /**
  * src/pages/Events.tsx
- * Events Page - Coming Soon
+ * Events Page
  */
+import { useState } from 'react';
 import { PageFrame } from '@/components/layout/PageFrame';
+import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
+import { ErrorState } from '@/components/ui/ErrorState';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { DataTable } from '@/components/ui/DataTable';
 import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+import { Badge } from '@/components/ui/Badge';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { normalizeApiError } from '@/utils/errors';
+import {
+  useEventsQuery,
+  useUpcomingEventsQuery,
+  useCreateEventMutation,
+  useUpdateEventMutation,
+  useDeleteEventMutation,
+} from '@/hooks/events';
+import type { EventRecord } from '@/types/models';
+
+const EVENT_TYPE_COLORS: Record<string, 'blue' | 'indigo' | 'green' | 'yellow' | 'red'> = {
+  HOLIDAY: 'blue',
+  FESTIVAL: 'indigo',
+  PROMOTION: 'green',
+  SALE_DAY: 'yellow',
+  CLOSURE: 'red',
+};
 
 export default function EventsPage() {
+  const [showCreate, setShowCreate] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [horizon, setHorizon] = useState(30);
+  const [form, setForm] = useState({
+    event_name: '', event_type: 'PROMOTION' as string, start_date: '', end_date: '',
+    expected_impact_pct: '', is_recurring: false, recurrence_rule: '',
+  });
+
+  const eventsQuery = useEventsQuery();
+  const upcomingQuery = useUpcomingEventsQuery(horizon);
+  const createMutation = useCreateEventMutation();
+  const _updateMutation = useUpdateEventMutation();
+  const deleteMutation = useDeleteEventMutation();
+
+  const events = eventsQuery.data ?? [];
+  const upcoming = upcomingQuery.data ?? [];
+
+  const handleCreate = () => {
+    if (!form.event_name || !form.start_date || !form.end_date) return;
+    createMutation.mutate({
+      event_name: form.event_name,
+      event_type: form.event_type,
+      start_date: form.start_date,
+      end_date: form.end_date,
+      expected_impact_pct: form.expected_impact_pct ? Number(form.expected_impact_pct) : null,
+      is_recurring: form.is_recurring,
+      recurrence_rule: form.recurrence_rule || null,
+    }, {
+      onSuccess: () => {
+        setShowCreate(false);
+        setForm({ event_name: '', event_type: 'PROMOTION', start_date: '', end_date: '', expected_impact_pct: '', is_recurring: false, recurrence_rule: '' });
+      },
+    });
+  };
+
+  const handleDelete = () => {
+    if (!deleteTarget) return;
+    deleteMutation.mutate(deleteTarget, { onSuccess: () => setDeleteTarget(null) });
+  };
+
+  if (eventsQuery.isError) {
+    return <ErrorState error={normalizeApiError(eventsQuery.error)} onRetry={() => void eventsQuery.refetch()} />;
+  }
+
   return (
-    <PageFrame title="Events">
-      <div className="max-w-4xl mx-auto">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-center">Events Management - Coming Soon</CardTitle>
-          </CardHeader>
-          <CardContent className="text-center py-12">
-            <div className="w-24 h-24 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <svg className="w-12 h-12 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
+    <PageFrame title="Events" subtitle="Manage business events and track their demand impact.">
+      {/* Upcoming events */}
+      <Card className="mb-6">
+        <CardHeader>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <CardTitle>Upcoming Events</CardTitle>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <span className="muted">Next</span>
+              <select value={horizon} onChange={(e) => setHorizon(Number(e.target.value))} className="input" style={{ width: 80 }}>
+                <option value={7}>7 days</option>
+                <option value={14}>14 days</option>
+                <option value={30}>30 days</option>
+                <option value={60}>60 days</option>
+              </select>
             </div>
-            
-            <h2 className="text-2xl font-semibold mb-4">Events & Ticketing</h2>
-            
-            <p className="text-gray-600 mb-8 max-w-2xl mx-auto">
-              Create and manage events, sell tickets online, and track attendance. Perfect for workshops, 
-              product launches, and customer appreciation events.
-            </p>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-              <div className="text-center">
-                <h3 className="font-medium mb-2">Event Creation</h3>
-                <p className="text-sm text-gray-500">Set up events with dates, pricing, and capacity limits</p>
-              </div>
-              <div className="text-center">
-                <h3 className="font-medium mb-2">Online Ticketing</h3>
-                <p className="text-sm text-gray-500">Sell tickets through your store with secure payment processing</p>
-              </div>
-              <div className="text-center">
-                <h3 className="font-medium mb-2">Attendance Tracking</h3>
-                <p className="text-sm text-gray-500">Check-in attendees and generate post-event reports</p>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {upcomingQuery.isLoading ? <SkeletonLoader variant="rect" height={100} /> : upcoming.length === 0 ? (
+            <p className="muted">No upcoming events in the next {horizon} days.</p>
+          ) : (
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+              {upcoming.map((ev) => (
+                <div key={ev.id} style={{ padding: '0.5rem 0.75rem', background: '#f9fafb', borderRadius: '0.375rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Badge variant={EVENT_TYPE_COLORS[ev.event_type] ?? 'secondary'}>{ev.event_type}</Badge>
+                  <strong>{ev.event_name}</strong>
+                  <span className="muted">{ev.start_date} → {ev.end_date}</span>
+                  {ev.expected_impact_pct != null && <Badge variant="info">{ev.expected_impact_pct > 0 ? '+' : ''}{ev.expected_impact_pct}%</Badge>}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Actions */}
+      <div className="button-row" style={{ marginBottom: '1rem' }}>
+        <Button variant="secondary" onClick={() => setShowCreate(!showCreate)}>{showCreate ? 'Cancel' : '+ New Event'}</Button>
+      </div>
+
+      {/* Create form */}
+      {showCreate && (
+        <Card className="mb-6">
+          <CardHeader><CardTitle>Create Event</CardTitle></CardHeader>
+          <CardContent>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' }}>
+              <Input placeholder="Event Name *" value={form.event_name} onChange={(e) => setForm({ ...form, event_name: e.target.value })} />
+              <select value={form.event_type} onChange={(e) => setForm({ ...form, event_type: e.target.value })} className="input">
+                <option value="HOLIDAY">Holiday</option>
+                <option value="FESTIVAL">Festival</option>
+                <option value="PROMOTION">Promotion</option>
+                <option value="SALE_DAY">Sale Day</option>
+                <option value="CLOSURE">Closure</option>
+              </select>
+              <Input type="date" placeholder="Start Date *" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} />
+              <Input type="date" placeholder="End Date *" value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} />
+              <Input placeholder="Impact %" value={form.expected_impact_pct} onChange={(e) => setForm({ ...form, expected_impact_pct: e.target.value })} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <input type="checkbox" checked={form.is_recurring} onChange={(e) => setForm({ ...form, is_recurring: e.target.checked })} />
+                <label>Recurring</label>
               </div>
             </div>
-            
-            <div className="space-y-4">
-              <Button variant="primary" size="lg">
-                Get Notified When Available
-              </Button>
-              <p className="text-sm text-gray-500">
-                In the meantime, check out our <Button variant="secondary" onClick={() => window.location.href = '/analytics'}>Analytics Dashboard</Button> for insights
-              </p>
+            <div className="button-row" style={{ marginTop: '1rem' }}>
+              <Button onClick={handleCreate} disabled={createMutation.isPending}>{createMutation.isPending ? 'Creating...' : 'Create'}</Button>
             </div>
+            {createMutation.isError && <p className="text-danger" style={{ marginTop: '0.5rem' }}>{normalizeApiError(createMutation.error).message}</p>}
           </CardContent>
         </Card>
-      </div>
+      )}
+
+      {/* All events list */}
+      {eventsQuery.isLoading ? <SkeletonLoader variant="rect" height={300} /> : events.length === 0 ? (
+        <EmptyState title="No events" body="Create your first business event to start tracking demand impact." />
+      ) : (
+        <DataTable<EventRecord>
+          columns={[
+            { key: 'name', header: 'Event', render: (row: EventRecord) => row.event_name },
+            { key: 'type', header: 'Type', render: (row: EventRecord) => <Badge variant={EVENT_TYPE_COLORS[row.event_type] ?? 'secondary'}>{row.event_type}</Badge> },
+            { key: 'start', header: 'Start', render: (row: EventRecord) => row.start_date },
+            { key: 'end', header: 'End', render: (row: EventRecord) => row.end_date },
+            { key: 'impact', header: 'Impact', render: (row: EventRecord) => row.expected_impact_pct != null ? `${row.expected_impact_pct}%` : '—' },
+            { key: 'recurring', header: 'Recurring', render: (row: EventRecord) => row.is_recurring ? 'Yes' : 'No' },
+            { key: 'actions', header: '', render: (row: EventRecord) => (
+              <Button variant="ghost" onClick={() => setDeleteTarget(row.id)}>Delete</Button>
+            )},
+          ]}
+          data={events}
+        />
+      )}
+
+      {deleteTarget && (
+        <ConfirmDialog
+          open
+          title="Delete Event"
+          body="Are you sure you want to delete this event? This cannot be undone."
+          confirmLabel="Delete"
+          destructive
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
     </PageFrame>
   );
 }

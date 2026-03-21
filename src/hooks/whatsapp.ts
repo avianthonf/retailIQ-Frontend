@@ -7,9 +7,7 @@ import * as whatsappApi from '@/api/whatsapp';
 import type { 
   WhatsAppConfig,
   WhatsAppTemplate,
-  WhatsAppMessage,
   WhatsAppCampaign,
-  WhatsAppAnalytics
 } from '@/api/whatsapp';
 
 // Query keys
@@ -17,11 +15,11 @@ export const whatsappKeys = {
   all: ['whatsapp'] as const,
   config: () => [...whatsappKeys.all, 'config'] as const,
   templates: () => [...whatsappKeys.all, 'templates'] as const,
-  messages: (params?: any) => [...whatsappKeys.all, 'messages', ...(params ? [params] : [])] as const,
+  messages: (params?: Record<string, unknown>) => [...whatsappKeys.all, 'messages', ...(params ? [params] : [])] as const,
   message: (id: string) => [...whatsappKeys.all, 'message', id] as const,
   campaigns: () => [...whatsappKeys.all, 'campaigns'] as const,
   campaign: (id: string) => [...whatsappKeys.all, 'campaign', id] as const,
-  analytics: (params?: any) => [...whatsappKeys.all, 'analytics', ...(params ? [params] : [])] as const,
+  analytics: (params?: Record<string, unknown>) => [...whatsappKeys.all, 'analytics', ...(params ? [params] : [])] as const,
 };
 
 // Configuration

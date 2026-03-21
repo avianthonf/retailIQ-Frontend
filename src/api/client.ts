@@ -211,6 +211,69 @@ export async function request<T>(config: AxiosRequestConfig): Promise<T> {
   return unwrapEnvelope<T>(response.data);
 }
 
+export interface ApiEnvelope<T> {
+  data: T;
+  meta: Record<string, unknown> | null;
+  message?: string;
+  success?: boolean;
+  error?: unknown;
+  raw: unknown;
+}
+
+export function extractEnvelope<T>(payload: unknown): ApiEnvelope<T> {
+  if (payload && typeof payload === 'object') {
+    const candidate = payload as Record<string, unknown>;
+    if (
+      'data' in candidate
+      && ('success' in candidate || 'meta' in candidate || 'error' in candidate || 'message' in candidate)
+    ) {
+      return {
+        data: candidate.data as T,
+        meta: (candidate.meta as Record<string, unknown> | null | undefined) ?? null,
+        message: typeof candidate.message === 'string' ? candidate.message : undefined,
+        success: typeof candidate.success === 'boolean' ? candidate.success : undefined,
+        error: candidate.error,
+        raw: payload,
+      };
+    }
+  }
+
+  return {
+    data: payload as T,
+    meta: null,
+    raw: payload,
+  };
+}
+
+export async function requestEnvelope<T>(config: AxiosRequestConfig): Promise<ApiEnvelope<T>> {
+  const response = await apiClient.request<unknown>(config);
+  return extractEnvelope<T>(response.data);
+}
+
+export async function requestAny<T>(configs: AxiosRequestConfig[]): Promise<ApiEnvelope<T>> {
+  let lastError: unknown;
+
+  for (const config of configs) {
+    try {
+      return await requestEnvelope<T>(config);
+    } catch (error) {
+      const normalized = normalizeApiError(error);
+      if (normalized.status === 404 || normalized.status === 405) {
+        lastError = error;
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  if (lastError) {
+    throw lastError;
+  }
+
+  throw new Error('Request failed.');
+}
+
 export async function requestBlob(config: AxiosRequestConfig): Promise<Blob> {
   const response = await apiClient.request<Blob>({ ...config, responseType: 'blob' });
   return response.data;
@@ -219,5 +282,12 @@ export async function requestBlob(config: AxiosRequestConfig): Promise<Blob> {
 export async function postForm<T>(url: string, data: FormData, config: AxiosRequestConfig = {}): Promise<T> {
   return request<T>({ ...config, url, method: 'POST', data });
 }
+
+export const unsupportedApi = <T = never>(feature: string): Promise<T> => Promise.reject(
+  normalizeApiError({
+    message: `${feature} is not supported by the current backend.`,
+    status: 501,
+  }),
+);
 
 export const safeRetryable = isIdempotentRequest;

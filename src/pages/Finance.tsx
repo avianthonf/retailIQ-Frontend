@@ -12,7 +12,7 @@ import { ErrorState } from '@/components/ui/ErrorState';
 import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Badge } from '@/components/ui/Badge';
-import { Input } from '@/components/ui/Input';
+import { Input as _Input } from '@/components/ui/Input';
 import { 
   useKYCQuery, 
   useCreditScoreQuery, 
@@ -40,6 +40,18 @@ export default function FinancePage() {
   const user = authStore.getState().user;
   const isOwner = user?.role === 'owner';
 
+  // Queries (must be before any conditional return per React hooks rules)
+  const { data: kyc, isLoading: kycLoading, error: kycError } = useKYCQuery();
+  const { data: creditScore, isLoading: creditScoreLoading } = useCreditScoreQuery();
+  const { data: creditLedger, isLoading: creditLedgerLoading } = useCreditLedgerQuery();
+  const { data: loanApplications, isLoading: loansLoading } = useLoanApplicationsQuery();
+  const { data: accounts, isLoading: accountsLoading } = useFinancialAccountsQuery();
+  const { data: treasuryBalance, isLoading: treasuryLoading } = useTreasuryBalanceQuery();
+  const { data: treasuryTransactions } = useTreasuryTransactionsQuery();
+
+  // Mutations
+  const repayMutation = useRepayCreditMutation();
+
   if (!isOwner) {
     return (
       <PageFrame title="Finance">
@@ -51,18 +63,6 @@ export default function FinancePage() {
       </PageFrame>
     );
   }
-
-  // Queries
-  const { data: kyc, isLoading: kycLoading, error: kycError } = useKYCQuery();
-  const { data: creditScore, isLoading: creditScoreLoading } = useCreditScoreQuery();
-  const { data: creditLedger, isLoading: creditLedgerLoading } = useCreditLedgerQuery();
-  const { data: loanApplications, isLoading: loansLoading } = useLoanApplicationsQuery();
-  const { data: accounts, isLoading: accountsLoading } = useFinancialAccountsQuery();
-  const { data: treasuryBalance, isLoading: treasuryLoading } = useTreasuryBalanceQuery();
-  const { data: treasuryTransactions } = useTreasuryTransactionsQuery();
-
-  // Mutations
-  const repayMutation = useRepayCreditMutation();
 
   // Handlers
   const handleRepayCredit = async () => {

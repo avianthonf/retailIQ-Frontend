@@ -29,7 +29,7 @@ import {
 } from '@/hooks/loyalty';
 import { authStore } from '@/stores/authStore';
 import type { Column } from '@/components/ui/DataTable';
-import type { LoyaltyAccount, LoyaltyTier, LoyaltyTransaction } from '@/api/loyalty';
+import type { LoyaltyAccount, LoyaltyTier, LoyaltyTransaction as _LoyaltyTransaction } from '@/api/loyalty';
 import { formatCurrency } from '@/utils/numbers';
 import { formatDate } from '@/utils/dates';
 import { normalizeApiError } from '@/utils/errors';
@@ -76,18 +76,18 @@ export default function LoyaltyPage() {
   const { data: accounts, isLoading: accountsLoading } = useLoyaltyAccountsQuery(
     searchQuery ? { query: searchQuery } : undefined
   );
-  const { data: analytics, isLoading: analyticsLoading } = useLoyaltyAnalyticsQuery();
+  const { data: analytics, isLoading: _analyticsLoading } = useLoyaltyAnalyticsQuery();
   const { data: expiringPoints } = useExpiringPointsQuery();
 
   // Mutations
-  const updateProgramMutation = useUpdateLoyaltyProgramMutation();
+  const _updateProgramMutation = useUpdateLoyaltyProgramMutation();
   const createTierMutation = useCreateTierMutation();
-  const updateTierMutation = useUpdateTierMutation();
+  const _updateTierMutation = useUpdateTierMutation();
   const deleteTierMutation = useDeleteTierMutation();
   const redeemMutation = useRedeemPointsMutation();
   const adjustMutation = useAdjustPointsMutation();
   const enrollMutation = useEnrollCustomerMutation();
-  const updateTierCustomerMutation = useUpdateCustomerTierMutation();
+  const _updateTierCustomerMutation = useUpdateCustomerTierMutation();
 
   // Handlers
   const handleRedeemPoints = async () => {

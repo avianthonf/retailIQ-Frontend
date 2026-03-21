@@ -42,7 +42,7 @@ export default function WhatsAppPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'messages' | 'templates' | 'campaigns' | 'settings'>('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCampaign, setSelectedCampaign] = useState<WhatsAppCampaign | null>(null);
-  const [selectedMessage, setSelectedMessage] = useState<WhatsAppMessage | null>(null);
+  const [_selectedMessage, _setSelectedMessage] = useState<WhatsAppMessage | null>(null);
   const [showSendMessageDialog, setShowSendMessageDialog] = useState(false);
   const [showCreateTemplateDialog, setShowCreateTemplateDialog] = useState(false);
   const [showCreateCampaignDialog, setShowCreateCampaignDialog] = useState(false);
@@ -87,20 +87,20 @@ export default function WhatsAppPage() {
     searchQuery ? { to: searchQuery } : undefined
   );
   const { data: campaigns, isLoading: campaignsLoading } = useWhatsAppCampaignsQuery();
-  const { data: analytics, isLoading: analyticsLoading } = useWhatsAppAnalyticsQuery();
+  const { data: analytics, isLoading: _analyticsLoading } = useWhatsAppAnalyticsQuery();
 
   // Mutations
-  const updateConfigMutation = useUpdateWhatsAppConfigMutation();
+  const _updateConfigMutation = useUpdateWhatsAppConfigMutation();
   const createTemplateMutation = useCreateWhatsAppTemplateMutation();
   const sendMessageMutation = useSendWhatsAppMessageMutation();
-  const sendBulkMessageMutation = useSendBulkWhatsAppMessagesMutation();
+  const _sendBulkMessageMutation = useSendBulkWhatsAppMessagesMutation();
   const createCampaignMutation = useCreateWhatsAppCampaignMutation();
-  const updateCampaignMutation = useUpdateWhatsAppCampaignMutation();
+  const _updateCampaignMutation = useUpdateWhatsAppCampaignMutation();
   const deleteCampaignMutation = useDeleteWhatsAppCampaignMutation();
   const sendCampaignMutation = useSendWhatsAppCampaignMutation();
   const optInMutation = useOptInCustomerMutation();
   const optOutMutation = useOptOutCustomerMutation();
-  const sendTestMutation = useSendTestWhatsAppMessageMutation();
+  const _sendTestMutation = useSendTestWhatsAppMessageMutation();
 
   // Handlers
   const handleSendMessage = async () => {

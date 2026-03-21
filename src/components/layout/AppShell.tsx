@@ -24,6 +24,7 @@ const navItems: NavItem[] = [
   { label: 'Store Profile', to: '/store/profile', role: 'owner' },
   { label: 'Categories', to: '/store/categories', role: 'owner' },
   { label: 'Tax Config', to: '/store/tax-config', role: 'owner' },
+  { label: 'Customers', to: '/customers' },
   { label: 'Suppliers', to: '/suppliers' },
   { label: 'Purchase Orders', to: '/purchase-orders' },
   { label: 'Receipts', to: '/receipts/template' },
@@ -42,6 +43,12 @@ const navItems: NavItem[] = [
   { label: 'Loyalty', to: '/loyalty' },
   { label: 'Credit', to: '/credit' },
   { label: 'Forecasting', to: '/forecasting', role: 'owner' },
+  { label: 'Pricing', to: '/pricing', role: 'owner' },
+  { label: 'AI Decisions', to: '/decisions', role: 'owner' },
+  { label: 'E-Invoicing', to: '/e-invoicing' },
+  { label: 'AI Assistant', to: '/ai-assistant' },
+  { label: 'Staff Performance', to: '/staff-performance' },
+  { label: 'Offline Analytics', to: '/offline' },
   { label: 'Finance', to: '/finance' },
 ];
 

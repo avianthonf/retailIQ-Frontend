@@ -31,7 +31,7 @@ import {
 } from '@/hooks/gst';
 import { authStore } from '@/stores/authStore';
 import type { Column } from '@/components/ui/DataTable';
-import type { TaxCategory, HSNMapping, GSTR1Invoice } from '@/api/gst';
+import type { TaxCategory, HSNMapping, GSTR1Invoice as _GSTR1Invoice } from '@/api/gst';
 import { formatCurrency } from '@/utils/numbers';
 import { formatDate } from '@/utils/dates';
 import { normalizeApiError } from '@/utils/errors';
@@ -40,7 +40,7 @@ import type { ApiError } from '@/types/api';
 export default function GstPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'config' | 'returns' | 'tax-categories' | 'hsn-mappings'>('overview');
   const [selectedPeriod, setSelectedPeriod] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
-  const [showEditConfig, setShowEditConfig] = useState(false);
+  const [_showEditConfig, _setShowEditConfig] = useState(false);
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [showAddMapping, setShowAddMapping] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'category' | 'mapping'; id: string } | null>(null);
@@ -63,6 +63,24 @@ export default function GstPage() {
   const user = authStore.getState().user;
   const isOwner = user?.role === 'owner';
 
+  // Queries (must be before any conditional return per React hooks rules)
+  const { data: gstConfig, isLoading: configLoading, error: configError } = useGSTConfigQuery();
+  const { data: _taxConfig, isLoading: _taxConfigLoading } = useTaxConfigQuery();
+  const { data: gstSummary, isLoading: _summaryLoading } = useGSTSummaryQuery(selectedPeriod);
+  const { data: gstr1, isLoading: _gstr1Loading } = useGSTR1Query(selectedPeriod);
+  const { data: categories, isLoading: categoriesLoading } = useTaxCategoriesQuery();
+  const { data: mappings, isLoading: mappingsLoading } = useHSNMappingsQuery();
+
+  // Mutations
+  const updateConfigMutation = useUpdateGSTConfigMutation();
+  const _updateTaxConfigMutation = useUpdateTaxConfigMutation();
+  const generateGSTR1Mutation = useGenerateGSTR1Mutation();
+  const fileGSTR1Mutation = useFileGSTR1Mutation();
+  const createCategoryMutation = useCreateTaxCategoryMutation();
+  const deleteCategoryMutation = useDeleteTaxCategoryMutation();
+  const createMappingMutation = useCreateHSNMappingMutation();
+  const deleteMappingMutation = useDeleteHSNMappingMutation();
+
   if (!isOwner) {
     return (
       <PageFrame title="GST">
@@ -75,29 +93,11 @@ export default function GstPage() {
     );
   }
 
-  // Queries
-  const { data: gstConfig, isLoading: configLoading, error: configError } = useGSTConfigQuery();
-  const { data: taxConfig, isLoading: taxConfigLoading } = useTaxConfigQuery();
-  const { data: gstSummary, isLoading: summaryLoading } = useGSTSummaryQuery(selectedPeriod);
-  const { data: gstr1, isLoading: gstr1Loading } = useGSTR1Query(selectedPeriod);
-  const { data: categories, isLoading: categoriesLoading } = useTaxCategoriesQuery();
-  const { data: mappings, isLoading: mappingsLoading } = useHSNMappingsQuery();
-
-  // Mutations
-  const updateConfigMutation = useUpdateGSTConfigMutation();
-  const updateTaxConfigMutation = useUpdateTaxConfigMutation();
-  const generateGSTR1Mutation = useGenerateGSTR1Mutation();
-  const fileGSTR1Mutation = useFileGSTR1Mutation();
-  const createCategoryMutation = useCreateTaxCategoryMutation();
-  const deleteCategoryMutation = useDeleteTaxCategoryMutation();
-  const createMappingMutation = useCreateHSNMappingMutation();
-  const deleteMappingMutation = useDeleteHSNMappingMutation();
-
   // Handlers
-  const handleSaveConfig = async () => {
+  const _handleSaveConfig = async () => {
     try {
       await updateConfigMutation.mutateAsync(gstConfig!);
-      setShowEditConfig(false);
+      _setShowEditConfig(false);
       alert('GST configuration updated successfully');
     } catch {
       // Error handled by mutation
@@ -239,7 +239,7 @@ export default function GstPage() {
     },
   ];
 
-  if (configLoading || taxConfigLoading) {
+  if (configLoading || _taxConfigLoading) {
     return (
       <PageFrame title="GST">
         <div className="space-y-6">
@@ -361,7 +361,7 @@ export default function GstPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle>GST Configuration</CardTitle>
-              <Button variant="primary" onClick={() => setShowEditConfig(true)}>
+              <Button variant="primary" onClick={() => _setShowEditConfig(true)}>
                 Edit Configuration
               </Button>
             </div>

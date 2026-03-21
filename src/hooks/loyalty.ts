@@ -7,21 +7,18 @@ import * as loyaltyApi from '@/api/loyalty';
 import type { 
   LoyaltyProgram,
   LoyaltyTier,
-  LoyaltyAccount,
-  LoyaltyTransaction,
   RedemptionRequest,
   PointsAdjustmentRequest,
-  LoyaltyAnalytics
 } from '@/api/loyalty';
 
 // Query keys
 export const loyaltyKeys = {
   all: ['loyalty'] as const,
   program: () => [...loyaltyKeys.all, 'program'] as const,
-  accounts: (params?: any) => [...loyaltyKeys.all, 'accounts', ...(params ? [params] : [])] as const,
+  accounts: (params?: Record<string, unknown>) => [...loyaltyKeys.all, 'accounts', ...(params ? [params] : [])] as const,
   account: (customerId: string) => [...loyaltyKeys.all, 'account', customerId] as const,
-  transactions: (customerId: string, params?: any) => [...loyaltyKeys.all, 'transactions', customerId, ...(params ? [params] : [])] as const,
-  analytics: (params?: any) => [...loyaltyKeys.all, 'analytics', ...(params ? [params] : [])] as const,
+  transactions: (customerId: string, params?: Record<string, unknown>) => [...loyaltyKeys.all, 'transactions', customerId, ...(params ? [params] : [])] as const,
+  analytics: (params?: Record<string, unknown>) => [...loyaltyKeys.all, 'analytics', ...(params ? [params] : [])] as const,
   expiring: (days: number) => [...loyaltyKeys.all, 'expiring', days] as const,
 };
 

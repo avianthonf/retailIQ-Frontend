@@ -37,6 +37,13 @@ export function RoleGuard({ role, children }: RoleGuardProps) {
 
 export function PublicOnlyGuard() {
   const isAuthenticated = authStore((state: AuthState) => state.isAuthenticated);
+  const location = useLocation();
+
+  // OTP verification can be the next step after registration even if a stale
+  // persisted session briefly marks the user as authenticated.
+  if (location.pathname === '/verify-otp' || location.pathname === '/auth/otp') {
+    return <Outlet />;
+  }
 
   if (isAuthenticated) {
     return <Navigate to="/dashboard" replace />;

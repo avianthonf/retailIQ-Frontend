@@ -220,12 +220,12 @@ export const canSendPurchaseOrder = (status: PurchaseOrderStatus): boolean => {
   return status === 'DRAFT';
 };
 
-export const canConfirmPurchaseOrder = (status: PurchaseOrderStatus): boolean => {
-  return status === 'SENT';
+export const canConfirmPurchaseOrder = (_status: PurchaseOrderStatus): boolean => {
+  return false;
 };
 
 export const canReceivePurchaseOrder = (status: PurchaseOrderStatus): boolean => {
-  return status === 'CONFIRMED' || status === 'PARTIALLY_RECEIVED';
+  return status === 'SENT' || status === 'PARTIALLY_RECEIVED';
 };
 
 export const canCancelPurchaseOrder = (status: PurchaseOrderStatus): boolean => {

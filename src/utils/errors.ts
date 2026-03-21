@@ -23,11 +23,26 @@ const extractFields = (payload: unknown): Record<string, string> | undefined => 
 
   const candidate = payload as Record<string, unknown>;
   const nestedError = candidate.error;
+  const nestedErrorRecord = nestedError && typeof nestedError === 'object'
+    ? nestedError as Record<string, unknown>
+    : undefined;
   const nestedFields = nestedError && typeof nestedError === 'object'
-    ? (nestedError as Record<string, unknown>).fields
+    ? nestedErrorRecord?.fields
     : undefined;
 
-  const source = candidate.fields ?? candidate.errors ?? candidate.validation_errors ?? nestedFields;
+  const source = candidate.fields
+    ?? candidate.errors
+    ?? candidate.validation_errors
+    ?? nestedFields
+    ?? (
+      nestedErrorRecord
+      && !('code' in nestedErrorRecord)
+      && !('message' in nestedErrorRecord)
+      && !('description' in nestedErrorRecord)
+      && !('error_description' in nestedErrorRecord)
+        ? nestedErrorRecord
+        : undefined
+    );
 
   if (!source || typeof source !== 'object') {
     return undefined;

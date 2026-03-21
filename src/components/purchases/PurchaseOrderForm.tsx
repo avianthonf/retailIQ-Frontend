@@ -206,7 +206,7 @@ export function PurchaseOrderForm({ initialData, onSuccess, onCancel }: Purchase
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <span className="text-gray-500">Contact:</span>
-                <p className="font-medium">{selectedSupplier.contact}</p>
+                <p className="font-medium">{selectedSupplier.contact_person}</p>
               </div>
               <div>
                 <span className="text-gray-500">Email:</span>

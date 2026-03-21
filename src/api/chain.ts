@@ -1,11 +1,11 @@
 /**
  * src/api/chain.ts
- * Chain Management API
- * Multi-store operations for chain owners
+ * Backend-aligned chain adapters
  */
-import { apiClient } from './client';
+import { request, unsupportedApi } from './client';
 
-// Chain types
+const CHAIN_BASE = '/api/v1/chain';
+
 export interface ChainGroup {
   chain_id: string;
   name: string;
@@ -95,65 +95,216 @@ export interface StoreMetric {
   change_percentage: number;
 }
 
-// Chain API
+interface RawChainDashboard {
+  total_revenue_today?: number;
+  per_store_today?: Array<{
+    store_id?: string;
+    name?: string;
+    revenue?: number;
+    transaction_count?: number;
+  }>;
+  transfer_suggestions?: Array<{
+    id?: string;
+    from_store?: string;
+    to_store?: string;
+    product?: string;
+    qty?: number;
+    reason?: string;
+  }>;
+}
+
+const nowIso = () => new Date().toISOString();
+
+const mapReason = (reason?: string): TransferSuggestion['reason'] => {
+  switch (reason) {
+    case 'STOCKOUT':
+      return 'STOCKOUT';
+    case 'OVERSTOCK':
+      return 'OVERSTOCK';
+    default:
+      return 'OPTIMIZATION';
+  }
+};
+
+const mapTransferStatus = (status?: string): StockTransfer['status'] => {
+  switch (status) {
+    case 'ACTIONED':
+      return 'COMPLETED';
+    case 'CANCELLED':
+      return 'CANCELLED';
+    case 'IN_TRANSIT':
+      return 'IN_TRANSIT';
+    default:
+      return 'PENDING';
+  }
+};
+
+const getDashboardRaw = () => request<RawChainDashboard>({ url: `${CHAIN_BASE}/dashboard`, method: 'GET' });
+
+const mapStoresFromDashboard = (chainId: string, dashboard: RawChainDashboard): ChainStore[] =>
+  Array.isArray(dashboard.per_store_today)
+    ? dashboard.per_store_today.map((store) => ({
+        store_id: String(store.store_id ?? ''),
+        chain_id: chainId,
+        store_name: store.name ?? `Store ${store.store_id ?? ''}`,
+        joined_at: nowIso(),
+        is_active: true,
+      }))
+    : [];
+
+const mapSuggestions = (dashboard: RawChainDashboard): TransferSuggestion[] =>
+  Array.isArray(dashboard.transfer_suggestions)
+    ? dashboard.transfer_suggestions.map((suggestion) => ({
+        from_store_id: String(suggestion.from_store ?? ''),
+        to_store_id: String(suggestion.to_store ?? ''),
+        product_id: String(suggestion.product ?? ''),
+        product_name: String(suggestion.product ?? ''),
+        suggested_quantity: Number(suggestion.qty ?? 0),
+        reason: mapReason(suggestion.reason),
+      }))
+    : [];
+
 export const chainApi = {
-  // Chain Group Management
   createGroup: async (data: CreateChainGroupRequest): Promise<ChainGroup> => {
-    const response = await apiClient.post('/chain/groups', data);
-    return response.data;
+    const response = await request<{ group_id?: string }>({
+      url: `${CHAIN_BASE}/groups`,
+      method: 'POST',
+      data,
+    });
+
+    return chainApi.getGroup(String(response.group_id ?? ''));
   },
 
   getGroup: async (chainId: string): Promise<ChainGroup> => {
-    const response = await apiClient.get(`/chain/groups/${chainId}`);
-    return response.data;
+    const dashboard = await getDashboardRaw();
+    return {
+      chain_id: chainId,
+      name: `Chain ${chainId.slice(0, 8)}`,
+      description: undefined,
+      owner_id: '',
+      created_at: nowIso(),
+      updated_at: nowIso(),
+      member_stores: mapStoresFromDashboard(chainId, dashboard),
+    };
   },
 
-  updateGroup: async (chainId: string, data: Partial<CreateChainGroupRequest>): Promise<ChainGroup> => {
-    const response = await apiClient.put(`/chain/groups/${chainId}`, data);
-    return response.data;
-  },
+  updateGroup: async (_chainId: string, _data: Partial<CreateChainGroupRequest>): Promise<ChainGroup> =>
+    unsupportedApi('Chain group updates'),
 
-  // Store Management
   addStore: async (chainId: string, data: AddStoreRequest): Promise<ChainStore> => {
-    const response = await apiClient.post(`/chain/groups/${chainId}/stores`, data);
-    return response.data;
+    await request<{ membership_id?: string }>({
+      url: `${CHAIN_BASE}/groups/${chainId}/stores`,
+      method: 'POST',
+      data,
+    });
+
+    return {
+      store_id: data.store_id,
+      chain_id: chainId,
+      store_name: data.store_id,
+      joined_at: nowIso(),
+      is_active: true,
+    };
   },
 
-  removeStore: async (chainId: string, storeId: string): Promise<void> => {
-    await apiClient.delete(`/chain/groups/${chainId}/stores/${storeId}`);
-  },
+  removeStore: async (_chainId: string, _storeId: string): Promise<void> => unsupportedApi('Removing stores from a chain'),
 
-  // Dashboard and Analytics
   getDashboard: async (chainId: string): Promise<ChainDashboard> => {
-    const response = await apiClient.get(`/chain/groups/${chainId}/dashboard`);
-    return response.data;
+    const dashboard = await getDashboardRaw();
+    const stores = Array.isArray(dashboard.per_store_today) ? dashboard.per_store_today : [];
+    const topStores = [...stores]
+      .sort((left, right) => Number(right.revenue ?? 0) - Number(left.revenue ?? 0))
+      .map((store) => ({
+        store_id: String(store.store_id ?? ''),
+        store_name: store.name ?? `Store ${store.store_id ?? ''}`,
+        revenue: Number(store.revenue ?? 0),
+        transactions: Number(store.transaction_count ?? 0),
+        growth_rate: 0,
+      }));
+
+    return {
+      chain_id: chainId,
+      total_stores: stores.length,
+      total_revenue: Number(dashboard.total_revenue_today ?? 0),
+      total_transactions: stores.reduce((sum, store) => sum + Number(store.transaction_count ?? 0), 0),
+      top_performing_stores: topStores,
+      recent_transfers: [],
+    };
   },
 
   getComparison: async (chainId: string, period: string): Promise<ChainComparison> => {
-    const response = await apiClient.get(`/chain/groups/${chainId}/comparison`, {
-      params: { period }
+    const response = await request<Array<{ store_id?: string; revenue?: number; relative_to_avg?: string }>>({
+      url: `${CHAIN_BASE}/compare`,
+      method: 'GET',
+      params: { period },
     });
-    return response.data;
+
+    const revenueMetrics = Array.isArray(response)
+      ? response.map((row) => ({
+          store_id: String(row.store_id ?? ''),
+          store_name: `Store ${row.store_id ?? ''}`,
+          value: Number(row.revenue ?? 0),
+          change_percentage: row.relative_to_avg === 'above' ? 5 : row.relative_to_avg === 'below' ? -5 : 0,
+        }))
+      : [];
+
+    return {
+      chain_id: chainId,
+      comparison_period: period,
+      metrics: {
+        revenue: revenueMetrics,
+        transactions: [],
+        inventory: [],
+        customers: [],
+      },
+    };
   },
 
-  // Stock Transfers
-  getTransferSuggestions: async (chainId: string): Promise<TransferSuggestion[]> => {
-    const response = await apiClient.get(`/chain/groups/${chainId}/transfer-suggestions`);
-    return response.data;
+  getTransferSuggestions: async (_chainId: string): Promise<TransferSuggestion[]> => {
+    const dashboard = await getDashboardRaw();
+    return mapSuggestions(dashboard);
   },
 
-  createTransfer: async (chainId: string, data: CreateTransferRequest): Promise<StockTransfer> => {
-    const response = await apiClient.post(`/chain/groups/${chainId}/transfers`, data);
-    return response.data;
+  createTransfer: async (_chainId: string, _data: CreateTransferRequest): Promise<StockTransfer> =>
+    unsupportedApi('Creating chain transfers'),
+
+  getTransfers: async (_chainId: string): Promise<StockTransfer[]> => {
+    const response = await request<Array<{ id?: string; from_store?: string; to_store?: string; product?: string; qty?: number; status?: string }>>({
+      url: `${CHAIN_BASE}/transfers`,
+      method: 'GET',
+    });
+
+    return Array.isArray(response)
+      ? response.map((transfer) => ({
+          transfer_id: String(transfer.id ?? ''),
+          from_store_id: String(transfer.from_store ?? ''),
+          to_store_id: String(transfer.to_store ?? ''),
+          product_id: String(transfer.product ?? ''),
+          quantity: Number(transfer.qty ?? 0),
+          status: mapTransferStatus(transfer.status),
+          created_at: nowIso(),
+        }))
+      : [];
   },
 
-  getTransfers: async (chainId: string): Promise<StockTransfer[]> => {
-    const response = await apiClient.get(`/chain/groups/${chainId}/transfers`);
-    return response.data;
-  },
+  updateTransferStatus: async (_chainId: string, transferId: string, status: StockTransfer['status']): Promise<StockTransfer> => {
+    if (status !== 'COMPLETED') {
+      return unsupportedApi('Updating transfer status');
+    }
 
-  updateTransferStatus: async (chainId: string, transferId: string, status: StockTransfer['status']): Promise<StockTransfer> => {
-    const response = await apiClient.patch(`/chain/groups/${chainId}/transfers/${transferId}`, { status });
-    return response.data;
+    await request<{ id?: string }>({
+      url: `${CHAIN_BASE}/transfers/${transferId}/confirm`,
+      method: 'POST',
+    });
+
+    return {
+      transfer_id: transferId,
+      from_store_id: '',
+      to_store_id: '',
+      product_id: '',
+      quantity: 0,
+      status: 'COMPLETED',
+      created_at: nowIso(),
+    };
   },
 };

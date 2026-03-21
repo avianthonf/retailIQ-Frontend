@@ -9,9 +9,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { validateApiEndpoints, getValidationSummary, isApiValidationComplete } from '@/utils/apiValidation';
 
+interface ValidationSummary {
+  total: number;
+  passed: number;
+  failed: number;
+  percentage: number;
+  modules: Array<{ module: string; status: string }>;
+}
+
 export default function ApiValidationPage() {
   const [results, setResults] = useState<Record<string, boolean> | null>(null);
-  const [summary, setSummary] = useState<any>(null);
+  const [summary, setSummary] = useState<ValidationSummary | null>(null);
   const [isValidating, setIsValidating] = useState(false);
 
   const runValidation = () => {
@@ -20,7 +28,7 @@ export default function ApiValidationPage() {
       const validationResults = validateApiEndpoints();
       const validationSummary = getValidationSummary(validationResults);
       setResults(validationResults);
-      setSummary(validationSummary);
+      setSummary(validationSummary as ValidationSummary);
       setIsValidating(false);
     }, 100);
   };
@@ -76,7 +84,7 @@ export default function ApiValidationPage() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {summary.modules.map((module: any) => (
+                {(summary?.modules ?? []).map((module) => (
                   <div key={module.module} className="flex items-center justify-between p-3 border rounded-lg">
                     <span className="font-medium capitalize">{module.module}</span>
                     <Badge variant={module.status === '✅' ? 'success' : 'danger'}>

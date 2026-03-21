@@ -8,11 +8,11 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { DataTable } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { ErrorState } from '@/components/ui/ErrorState';
+import { ErrorState as _ErrorState } from '@/components/ui/ErrorState';
 import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Badge } from '@/components/ui/Badge';
-import { Input } from '@/components/ui/Input';
+import { Input as _Input } from '@/components/ui/Input';
 import { 
   useApiKeysQuery,
   useWebhooksQuery,
@@ -37,8 +37,8 @@ import { authStore } from '@/stores/authStore';
 import type { Column } from '@/components/ui/DataTable';
 import type { ApiKey, Webhook, OAuthApplication } from '@/api/developer';
 import { formatDate } from '@/utils/dates';
-import { normalizeApiError } from '@/utils/errors';
-import type { ApiError } from '@/types/api';
+import { normalizeApiError as _normalizeApiError } from '@/utils/errors';
+import type { ApiError as _ApiError } from '@/types/api';
 
 export default function DeveloperPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'api-keys' | 'webhooks' | 'oauth' | 'docs' | 'logs'>('overview');
@@ -80,21 +80,21 @@ export default function DeveloperPage() {
   const { data: usageStats, isLoading: usageLoading } = useUsageStatsQuery();
   const { data: oauthApps, isLoading: oauthLoading } = useOAuthApplicationsQuery();
   const { data: docs, isLoading: docsLoading } = useApiDocumentationQuery();
-  const { data: rateLimits, isLoading: rateLimitsLoading } = useRateLimitsQuery();
+  const { data: _rateLimits, isLoading: _rateLimitsLoading } = useRateLimitsQuery();
   const { data: logs, isLoading: logsLoading } = useApiLogsQuery();
 
   // Mutations
   const createApiKeyMutation = useCreateApiKeyMutation();
   const deleteApiKeyMutation = useDeleteApiKeyMutation();
-  const regenerateApiKeyMutation = useRegenerateApiKeyMutation();
+  const _regenerateApiKeyMutation = useRegenerateApiKeyMutation();
   const createWebhookMutation = useCreateWebhookMutation();
-  const updateWebhookMutation = useUpdateWebhookMutation();
+  const _updateWebhookMutation = useUpdateWebhookMutation();
   const deleteWebhookMutation = useDeleteWebhookMutation();
-  const testWebhookMutation = useTestWebhookMutation();
+  const _testWebhookMutation = useTestWebhookMutation();
   const createOAuthMutation = useCreateOAuthApplicationMutation();
-  const updateOAuthMutation = useUpdateOAuthApplicationMutation();
+  const _updateOAuthMutation = useUpdateOAuthApplicationMutation();
   const deleteOAuthMutation = useDeleteOAuthApplicationMutation();
-  const regenerateSecretMutation = useRegenerateClientSecretMutation();
+  const _regenerateSecretMutation = useRegenerateClientSecretMutation();
 
   // Handlers
   const handleCreateApiKey = async () => {

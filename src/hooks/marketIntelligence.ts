@@ -4,27 +4,20 @@
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as marketIntelligenceApi from '@/api/marketIntelligence';
-import type { 
-  MarketSummary,
-  PriceSignal,
-  PriceIndex,
-  MarketAlert,
-  CompetitorAnalysis,
-  DemandForecast
-} from '@/api/marketIntelligence';
+
 
 // Query keys
 export const marketIntelligenceKeys = {
   all: ['marketIntelligence'] as const,
   summary: (region?: string) => [...marketIntelligenceKeys.all, 'summary', ...(region ? [region] : [])] as const,
-  signals: (params?: any) => [...marketIntelligenceKeys.all, 'signals', ...(params ? [params] : [])] as const,
-  indices: (params?: any) => [...marketIntelligenceKeys.all, 'indices', ...(params ? [params] : [])] as const,
-  alerts: (params?: any) => [...marketIntelligenceKeys.all, 'alerts', ...(params ? [params] : [])] as const,
+  signals: (params?: Record<string, unknown>) => [...marketIntelligenceKeys.all, 'signals', ...(params ? [params] : [])] as const,
+  indices: (params?: Record<string, unknown>) => [...marketIntelligenceKeys.all, 'indices', ...(params ? [params] : [])] as const,
+  alerts: (params?: Record<string, unknown>) => [...marketIntelligenceKeys.all, 'alerts', ...(params ? [params] : [])] as const,
   competitors: (region?: string) => [...marketIntelligenceKeys.all, 'competitors', ...(region ? [region] : [])] as const,
   competitor: (id: string) => [...marketIntelligenceKeys.all, 'competitor', id] as const,
-  forecasts: (params?: any) => [...marketIntelligenceKeys.all, 'forecasts', ...(params ? [params] : [])] as const,
-  trends: (params?: any) => [...marketIntelligenceKeys.all, 'trends', ...(params ? [params] : [])] as const,
-  recommendations: (params?: any) => [...marketIntelligenceKeys.all, 'recommendations', ...(params ? [params] : [])] as const,
+  forecasts: (params?: Record<string, unknown>) => [...marketIntelligenceKeys.all, 'forecasts', ...(params ? [params] : [])] as const,
+  trends: (params?: Record<string, unknown>) => [...marketIntelligenceKeys.all, 'trends', ...(params ? [params] : [])] as const,
+  recommendations: (params?: Record<string, unknown>) => [...marketIntelligenceKeys.all, 'recommendations', ...(params ? [params] : [])] as const,
 };
 
 // Market Summary

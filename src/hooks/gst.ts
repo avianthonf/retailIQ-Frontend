@@ -8,13 +8,8 @@ import type {
   GSTConfig,
   TaxConfig,
   TaxCalculationRequest,
-  TaxCalculationResponse,
   TaxCategory,
   HSNMapping,
-  GSTSummary,
-  GSTR1Return,
-  HSNSearchResult,
-  GSTLiabilitySlab
 } from '@/api/gst';
 
 // Query keys

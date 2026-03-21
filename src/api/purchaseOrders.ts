@@ -1,11 +1,11 @@
 /**
  * src/api/purchaseOrders.ts
- * Oracle Document sections consumed: 3.2, 5.2
- * Last item from Section 11 risks addressed here: Store scoping, PO status tracking
+ * Backend-aligned purchase order adapters
  */
-import { apiClient } from './client';
+import { request, unsupportedApi } from './client';
 
-// Purchase Order types based on Oracle Section 4.1
+const PURCHASE_ORDERS_BASE = '/api/v1/purchase-orders';
+
 export interface PurchaseOrder {
   purchase_order_id: string;
   store_id: string;
@@ -42,7 +42,7 @@ export interface PurchaseOrderLineItem {
   notes?: string;
 }
 
-export type PurchaseOrderStatus = 
+export type PurchaseOrderStatus =
   | 'DRAFT'
   | 'SENT'
   | 'CONFIRMED'
@@ -121,88 +121,268 @@ export interface PurchaseOrderSummary {
   pending_value: number;
 }
 
-// ⚠️ RISK [MEDIUM]: Purchase orders must maintain store scoping
+interface RawPurchaseOrderListItem {
+  id?: string;
+  supplier_id?: string;
+  status?: string;
+  expected_delivery_date?: string | null;
+  created_at?: string;
+}
+
+interface RawPurchaseOrderDetail {
+  id?: string;
+  supplier_id?: string;
+  status?: string;
+  expected_delivery_date?: string | null;
+  notes?: string;
+  created_at?: string;
+  items?: Array<{
+    product_id?: string;
+    ordered_qty?: number;
+    received_qty?: number;
+    unit_price?: number;
+  }>;
+}
+
+const nowIso = () => new Date().toISOString();
+
+const mapStatus = (status?: string, items?: RawPurchaseOrderDetail['items']): PurchaseOrderStatus => {
+  if (status === 'FULFILLED') {
+    return 'RECEIVED';
+  }
+  if (status === 'CANCELLED') {
+    return 'CANCELLED';
+  }
+  if (status === 'SENT') {
+    const hasPartial = Array.isArray(items) && items.some((item) => Number(item.received_qty ?? 0) > 0);
+    return hasPartial ? 'PARTIALLY_RECEIVED' : 'SENT';
+  }
+  return 'DRAFT';
+};
+
+const mapPurchaseOrder = (purchaseOrder: RawPurchaseOrderDetail): PurchaseOrder => {
+  const lineItems = Array.isArray(purchaseOrder.items)
+    ? purchaseOrder.items.map((item) => {
+        const quantity = Number(item.ordered_qty ?? 0);
+        const receivedQuantity = Number(item.received_qty ?? 0);
+        const unitPrice = Number(item.unit_price ?? 0);
+        return {
+          line_item_id: String(item.product_id ?? ''),
+          product_id: String(item.product_id ?? ''),
+          sku_code: String(item.product_id ?? ''),
+          product_name: String(item.product_id ?? ''),
+          quantity,
+          unit_price: unitPrice,
+          tax_rate: 0,
+          discount_rate: 0,
+          total_amount: quantity * unitPrice,
+          received_quantity: receivedQuantity,
+          pending_quantity: Math.max(quantity - receivedQuantity, 0),
+        };
+      })
+    : [];
+
+  const totalAmount = lineItems.reduce((sum, item) => sum + item.total_amount, 0);
+  const status = mapStatus(purchaseOrder.status, purchaseOrder.items);
+
+  return {
+    purchase_order_id: String(purchaseOrder.id ?? ''),
+    store_id: '',
+    supplier_id: String(purchaseOrder.supplier_id ?? ''),
+    status,
+    order_date: purchaseOrder.created_at ?? nowIso(),
+    expected_delivery_date: purchaseOrder.expected_delivery_date ?? undefined,
+    received_date: status === 'RECEIVED' ? nowIso() : undefined,
+    total_amount: totalAmount,
+    tax_amount: 0,
+    discount_amount: 0,
+    final_amount: totalAmount,
+    notes: purchaseOrder.notes ?? undefined,
+    internal_notes: undefined,
+    created_by: '',
+    updated_by: undefined,
+    created_at: purchaseOrder.created_at ?? nowIso(),
+    updated_at: purchaseOrder.created_at ?? nowIso(),
+    line_items: lineItems,
+  };
+};
+
+const mapBackendStatusFilter = (status?: PurchaseOrderStatus | PurchaseOrderStatus[]) => {
+  if (Array.isArray(status)) {
+    return status[0] === 'RECEIVED' ? 'FULFILLED' : status[0];
+  }
+  if (status === 'RECEIVED') {
+    return 'FULFILLED';
+  }
+  if (status === 'PARTIALLY_RECEIVED') {
+    return 'SENT';
+  }
+  return status;
+};
+
 export const purchaseOrdersApi = {
-  // List purchase orders with filters
-  // Oracle: GET /api/v1/purchase-orders
   listPurchaseOrders: async (params: ListPurchaseOrdersRequest = {}): Promise<PurchaseOrderListResponse> => {
-    const response = await apiClient.get('/purchase-orders', { params });
-    return response.data;
+    const response = await request<RawPurchaseOrderListItem[]>({
+      url: PURCHASE_ORDERS_BASE,
+      method: 'GET',
+      params: {
+        status: mapBackendStatusFilter(params.status),
+      },
+    });
+
+    const detailPromises = Array.isArray(response)
+      ? response.map((purchaseOrder) =>
+          request<RawPurchaseOrderDetail>({
+            url: `${PURCHASE_ORDERS_BASE}/${purchaseOrder.id}`,
+            method: 'GET',
+          }),
+        )
+      : [];
+
+    const detailedOrders = (await Promise.all(detailPromises)).map(mapPurchaseOrder);
+    let filtered = detailedOrders;
+
+    if (params.supplier_id) {
+      filtered = filtered.filter((purchaseOrder) => purchaseOrder.supplier_id === params.supplier_id);
+    }
+
+    if (params.search) {
+      const query = params.search.toLowerCase();
+      filtered = filtered.filter((purchaseOrder) => purchaseOrder.purchase_order_id.toLowerCase().includes(query));
+    }
+
+    if (params.status) {
+      const statuses = Array.isArray(params.status) ? params.status : [params.status];
+      filtered = filtered.filter((purchaseOrder) => statuses.includes(purchaseOrder.status));
+    }
+
+    if (params.date_from) {
+      filtered = filtered.filter((purchaseOrder) => purchaseOrder.order_date >= params.date_from!);
+    }
+
+    if (params.date_to) {
+      filtered = filtered.filter((purchaseOrder) => purchaseOrder.order_date <= params.date_to!);
+    }
+
+    const sortBy = params.sort_by ?? 'order_date';
+    const sortOrder = params.sort_order ?? 'desc';
+    filtered = [...filtered].sort((left, right) => {
+      const leftValue = sortBy === 'total_amount' ? left.final_amount : left[sortBy] ?? '';
+      const rightValue = sortBy === 'total_amount' ? right.final_amount : right[sortBy] ?? '';
+
+      if (leftValue < rightValue) {
+        return sortOrder === 'asc' ? -1 : 1;
+      }
+      if (leftValue > rightValue) {
+        return sortOrder === 'asc' ? 1 : -1;
+      }
+      return 0;
+    });
+
+    const page = params.page ?? 1;
+    const limit = params.limit ?? (filtered.length || 1);
+    const start = (page - 1) * limit;
+
+    return {
+      purchase_orders: filtered.slice(start, start + limit),
+      total: filtered.length,
+      page,
+      pages: filtered.length ? Math.ceil(filtered.length / limit) : 0,
+    };
   },
 
-  // Get purchase order by ID
-  // Oracle: GET /api/v1/purchase-orders/<id>
   getPurchaseOrder: async (purchaseOrderId: string): Promise<PurchaseOrder> => {
-    const response = await apiClient.get(`/purchase-orders/${purchaseOrderId}`);
-    return response.data;
+    const response = await request<RawPurchaseOrderDetail>({
+      url: `${PURCHASE_ORDERS_BASE}/${purchaseOrderId}`,
+      method: 'GET',
+    });
+    return mapPurchaseOrder(response);
   },
 
-  // Create new purchase order
-  // Oracle: POST /api/v1/purchase-orders
   createPurchaseOrder: async (data: CreatePurchaseOrderRequest): Promise<PurchaseOrder> => {
-    const response = await apiClient.post('/purchase-orders', data);
-    return response.data;
+    const response = await request<{ id?: string }>({
+      url: PURCHASE_ORDERS_BASE,
+      method: 'POST',
+      data: {
+        supplier_id: data.supplier_id,
+        expected_delivery_date: data.expected_delivery_date,
+        notes: data.notes,
+        items: data.line_items.map((item) => ({
+          product_id: item.product_id,
+          ordered_qty: item.quantity,
+          unit_price: item.unit_price,
+        })),
+      },
+    });
+
+    return purchaseOrdersApi.getPurchaseOrder(String(response.id ?? ''));
   },
 
-  // Update purchase order
-  // Oracle: PUT /api/v1/purchase-orders/<id>
-  updatePurchaseOrder: async (purchaseOrderId: string, data: UpdatePurchaseOrderRequest): Promise<PurchaseOrder> => {
-    const response = await apiClient.put(`/purchase-orders/${purchaseOrderId}`, data);
-    return response.data;
-  },
+  updatePurchaseOrder: async (_purchaseOrderId: string, _data: UpdatePurchaseOrderRequest): Promise<PurchaseOrder> =>
+    unsupportedApi('Updating draft purchase orders'),
 
-  // Delete purchase order (draft only)
-  // Oracle: DELETE /api/v1/purchase-orders/<id>
   deletePurchaseOrder: async (purchaseOrderId: string): Promise<void> => {
-    await apiClient.delete(`/purchase-orders/${purchaseOrderId}`);
+    await request<{ id?: string }>({
+      url: `${PURCHASE_ORDERS_BASE}/${purchaseOrderId}/cancel`,
+      method: 'PUT',
+    });
   },
 
-  // Send purchase order to supplier
-  // Oracle: POST /api/v1/purchase-orders/<id>/send
   sendPurchaseOrder: async (purchaseOrderId: string): Promise<PurchaseOrder> => {
-    const response = await apiClient.post(`/purchase-orders/${purchaseOrderId}/send`);
-    return response.data;
+    await request<{ id?: string }>({
+      url: `${PURCHASE_ORDERS_BASE}/${purchaseOrderId}/send`,
+      method: 'POST',
+    });
+    return purchaseOrdersApi.getPurchaseOrder(purchaseOrderId);
   },
 
-  // Confirm purchase order
-  // Oracle: POST /api/v1/purchase-orders/<id>/confirm
-  confirmPurchaseOrder: async (purchaseOrderId: string): Promise<PurchaseOrder> => {
-    const response = await apiClient.post(`/purchase-orders/${purchaseOrderId}/confirm`);
-    return response.data;
-  },
+  confirmPurchaseOrder: async (_purchaseOrderId: string): Promise<PurchaseOrder> => unsupportedApi('Confirming purchase orders'),
 
-  // Receive purchase order (partial or full)
-  // Oracle: POST /api/v1/purchase-orders/<id>/receive
   receivePurchaseOrder: async (purchaseOrderId: string, data: ReceivePurchaseOrderRequest): Promise<PurchaseOrder> => {
-    const response = await apiClient.post(`/purchase-orders/${purchaseOrderId}/receive`, data);
-    return response.data;
+    await request<{ id?: string; status?: string }>({
+      url: `${PURCHASE_ORDERS_BASE}/${purchaseOrderId}/receive`,
+      method: 'POST',
+      data: {
+        notes: data.notes,
+        items: data.line_items.map((item) => ({
+          product_id: item.line_item_id,
+          received_qty: item.received_quantity,
+        })),
+      },
+    });
+
+    return purchaseOrdersApi.getPurchaseOrder(purchaseOrderId);
   },
 
-  // Cancel purchase order
-  // Oracle: POST /api/v1/purchase-orders/<id>/cancel
-  cancelPurchaseOrder: async (purchaseOrderId: string, reason?: string): Promise<PurchaseOrder> => {
-    const response = await apiClient.post(`/purchase-orders/${purchaseOrderId}/cancel`, { reason });
-    return response.data;
+  cancelPurchaseOrder: async (purchaseOrderId: string, _reason?: string): Promise<PurchaseOrder> => {
+    await request<{ id?: string }>({
+      url: `${PURCHASE_ORDERS_BASE}/${purchaseOrderId}/cancel`,
+      method: 'PUT',
+    });
+    return purchaseOrdersApi.getPurchaseOrder(purchaseOrderId);
   },
 
-  // Get purchase order summary
-  // Oracle: GET /api/v1/purchase-orders/summary
   getPurchaseOrderSummary: async (): Promise<PurchaseOrderSummary> => {
-    const response = await apiClient.get('/purchase-orders/summary');
-    return response.data;
+    const response = await purchaseOrdersApi.listPurchaseOrders();
+    const purchaseOrders = response.purchase_orders;
+
+    return {
+      total_orders: purchaseOrders.length,
+      draft_count: purchaseOrders.filter((purchaseOrder) => purchaseOrder.status === 'DRAFT').length,
+      sent_count: purchaseOrders.filter((purchaseOrder) => purchaseOrder.status === 'SENT').length,
+      confirmed_count: purchaseOrders.filter((purchaseOrder) => purchaseOrder.status === 'CONFIRMED').length,
+      received_count: purchaseOrders.filter((purchaseOrder) => purchaseOrder.status === 'RECEIVED').length,
+      cancelled_count: purchaseOrders.filter((purchaseOrder) => purchaseOrder.status === 'CANCELLED').length,
+      total_value: purchaseOrders.reduce((sum, purchaseOrder) => sum + purchaseOrder.final_amount, 0),
+      pending_value: purchaseOrders
+        .filter((purchaseOrder) => !['RECEIVED', 'CANCELLED', 'REJECTED'].includes(purchaseOrder.status))
+        .reduce((sum, purchaseOrder) => sum + purchaseOrder.final_amount, 0),
+    };
   },
 
-  // Generate PDF for purchase order
-  // Oracle: GET /api/v1/purchase-orders/<id>/pdf
-  generatePdf: async (purchaseOrderId: string): Promise<{ url: string; job_id: string }> => {
-    const response = await apiClient.get(`/purchase-orders/${purchaseOrderId}/pdf`);
-    return response.data;
-  },
+  generatePdf: async (_purchaseOrderId: string): Promise<{ url: string; job_id: string }> =>
+    unsupportedApi('Purchase order PDF generation'),
 
-  // Email purchase order to supplier
-  // Oracle: POST /api/v1/purchase-orders/<id>/email
-  emailPurchaseOrder: async (purchaseOrderId: string, email: string): Promise<{ message: string }> => {
-    const response = await apiClient.post(`/purchase-orders/${purchaseOrderId}/email`, { email });
-    return response.data;
-  },
+  emailPurchaseOrder: async (_purchaseOrderId: string, _email: string): Promise<{ message: string }> =>
+    unsupportedApi('Purchase order email delivery'),
 };

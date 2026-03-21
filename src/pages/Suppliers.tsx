@@ -24,12 +24,11 @@ interface Supplier {
   supplier_id: string;
   store_id: string;
   name: string;
-  contact: string;
+  contact_person: string;
   email?: string;
   phone?: string;
   address?: string;
   gst_number?: string;
-  payment_terms?: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -109,9 +108,9 @@ export default function Suppliers() {
       render: (row: Supplier) => row.name,
     },
     {
-      key: 'contact',
+      key: 'contact_person',
       header: 'Contact',
-      render: (row: Supplier) => row.contact,
+      render: (row: Supplier) => row.contact_person,
     },
     {
       key: 'email',

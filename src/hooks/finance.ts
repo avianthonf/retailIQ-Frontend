@@ -8,16 +8,6 @@ import type {
   KYCSubmission,
   LoanApplicationRequest,
   TreasuryConfig,
-  KYCRecord,
-  CreditScore,
-  CreditLedger,
-  CreditTransaction,
-  LoanProduct,
-  LoanApplication,
-  FinancialAccount,
-  LedgerEntry,
-  TreasuryBalance,
-  TreasuryTransaction
 } from '@/api/finance';
 
 // Query keys

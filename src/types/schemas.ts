@@ -17,8 +17,8 @@ export const registerSchema = z.object({
   mobile_number: z.string().min(1, 'Mobile number is required'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   full_name: z.string().min(1, 'Full name is required'),
-  store_name: z.string().optional(),
-  email: z.string().email('Enter a valid email address'),
+  store_name: z.string().min(1, 'Store name is required'),
+  email: z.string().email('Enter a valid email address').optional().or(z.literal('')),
   role: z.enum(['owner', 'staff']).optional(),
 });
 export type RegisterFormValues = z.infer<typeof registerSchema>;
@@ -32,12 +32,8 @@ export type VerifyOtpFormValues = z.infer<typeof verifyOtpSchema>;
 
 /** Oracle sections 12.2 and 12.3 */
 export const resendOtpSchema = z.object({
-  contact: z.string().optional(),
-  mobile_number: z.string().optional(),
+  contact: z.string().min(1, 'Contact is required'),
   purpose: z.string().optional(),
-}).refine((value) => Boolean(value.contact ?? value.mobile_number), {
-  message: 'Either contact or mobile number is required',
-  path: ['contact'],
 });
 export type ResendOtpFormValues = z.infer<typeof resendOtpSchema>;
 
@@ -227,7 +223,11 @@ export type KycVerifyFormValues = z.infer<typeof kycVerifySchema>;
 /** Oracle sections 12.3 */
 export const supplierSchema = z.object({
   name: z.string().min(1, 'Supplier name is required'),
-  contact: z.string().nullable().optional(),
+  contact_person: z.string().nullable().optional(),
+  phone: z.string().nullable().optional(),
+  email: z.string().email().nullable().optional().or(z.literal('')),
+  address: z.string().nullable().optional(),
+  gst_number: z.string().nullable().optional(),
 });
 export type SupplierFormValues = z.infer<typeof supplierSchema>;
 

@@ -69,6 +69,15 @@ const PurchaseOrderDetailPage = lazyPage(() => import('@/pages/PurchaseOrderDeta
 const PurchaseOrderCreatePage = lazyPage(() => import('@/pages/PurchaseOrderCreate'));
 const PurchaseOrderEditPage = lazyPage(() => import('@/pages/PurchaseOrderEdit'));
 const ApiValidationPage = lazyPage(() => import('@/pages/ApiValidation'));
+const CustomersPage = lazyPage(() => import('@/pages/Customers'));
+const CustomerDetailPage = lazyPage(() => import('@/pages/CustomerDetail'));
+const StaffPerformancePage = lazyPage(() => import('@/pages/StaffPerformance'));
+const StaffPerformanceDetailPage = lazyPage(() => import('@/pages/StaffPerformanceDetail'));
+const PricingPage = lazyPage(() => import('@/pages/Pricing'));
+const DecisionsPage = lazyPage(() => import('@/pages/Decisions'));
+const EInvoicingPage = lazyPage(() => import('@/pages/EInvoicing'));
+const AiAssistantPage = lazyPage(() => import('@/pages/AiAssistant'));
+const OfflinePage = lazyPage(() => import('@/pages/Offline'));
 
 function RouterRoot() {
   return <Outlet />;
@@ -82,8 +91,11 @@ export const router = createBrowserRouter([
         element: <PublicOnlyGuard />,
         children: [
           { path: '/login', element: <LoginPage /> },
+          { path: '/auth/login', element: <LoginPage /> },
           { path: '/register', element: <RegisterPage /> },
+          { path: '/auth/register', element: <RegisterPage /> },
           { path: '/verify-otp', element: <VerifyOtpPage /> },
+          { path: '/auth/otp', element: <VerifyOtpPage /> },
           { path: '/mfa-setup', element: <MfaSetupPage /> },
           { path: '/mfa-verify', element: <MfaVerifyPage /> },
           { path: '/forgot-password', element: <ForgotPasswordPage /> },
@@ -125,6 +137,15 @@ export const router = createBrowserRouter([
               { path: '/kyc', element: <KycPage /> },
               { path: '/developer', element: <DeveloperPage /> },
               { path: '/api-validation', element: <ApiValidationPage /> },
+              { path: '/customers', element: <CustomersPage /> },
+              { path: '/customers/:customerId', element: <CustomerDetailPage /> },
+              { path: '/staff-performance', element: <StaffPerformancePage /> },
+              { path: '/staff-performance/:userId', element: <RoleGuard role="owner"><StaffPerformanceDetailPage /></RoleGuard> },
+              { path: '/pricing', element: <RoleGuard role="owner"><PricingPage /></RoleGuard> },
+              { path: '/decisions', element: <RoleGuard role="owner"><DecisionsPage /></RoleGuard> },
+              { path: '/e-invoicing', element: <EInvoicingPage /> },
+              { path: '/ai-assistant', element: <AiAssistantPage /> },
+              { path: '/offline', element: <OfflinePage /> },
               { path: '/marketplace', element: <MarketplacePage /> },
               { path: '/chain', element: <ChainPage /> },
               { path: '/whatsapp', element: <WhatsAppPage /> },

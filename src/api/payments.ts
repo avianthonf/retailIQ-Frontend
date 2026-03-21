@@ -1,7 +1,6 @@
 /**
  * src/api/payments.ts
- * Oracle Document sections consumed: 3, 4, 12
- * Last item from Section 11 risks addressed here: Mixed response envelopes
+ * Backend-aligned payment adapters
  */
 import { request } from '@/api/client';
 import type {
@@ -11,5 +10,8 @@ import type {
   ListPaymentProvidersResponse,
 } from '@/types/api';
 
-export const listPaymentProviders = (filters: ListPaymentProvidersRequest = {}) => request<ListPaymentProvidersResponse>({ url: '/api/v1/payments/providers', method: 'GET', params: filters });
+export const listPaymentProviders = async (filters: ListPaymentProvidersRequest = {}): Promise<ListPaymentProvidersResponse> => {
+  const providers = await request<ListPaymentProvidersResponse['providers']>({ url: '/api/v1/payments/providers', method: 'GET', params: filters });
+  return { providers: Array.isArray(providers) ? providers : [] };
+};
 export const createPaymentIntent = (payload: CreatePaymentIntentRequest) => request<CreatePaymentIntentResponse>({ url: '/api/v1/payments/intent', method: 'POST', data: payload });

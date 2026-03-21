@@ -1,9 +1,8 @@
 /**
  * src/api/analytics.ts
- * Oracle Document sections consumed: 3.2, 5.2, 5.12
- * Last item from Section 11 risks addressed here: Mixed response envelopes
+ * Backend-aligned analytics adapters
  */
-import { apiClient } from './client';
+import { requestEnvelope } from './client';
 
 // Analytics request/response types based on Oracle Section 3.2
 export interface RevenueMetricsResponse {
@@ -37,70 +36,75 @@ export interface PaymentModeSummaryResponse {
   percentage: number;
 }
 
-// ⚠️ ORACLE UNCERTAIN: Analytics endpoints may return mixed response shapes
-// Some analytics endpoints use standard envelope, others return raw JSON
-const normalizeAnalyticsResponse = (response: unknown) => {
-  // Handle standard envelope
-  if (response && typeof response === 'object' && 'data' in response) {
-    return (response as { data: unknown }).data;
-  }
-  // Handle raw JSON response
-  return response;
-};
+interface RevenueRow {
+  revenue?: number;
+  profit?: number;
+  transactions?: number;
+}
 
 export const analyticsApi = {
-  // Get revenue, profit, and order metrics
-  // Oracle: GET /api/v1/analytics/revenue
   getRevenueMetrics: async (): Promise<RevenueMetricsResponse> => {
-    const response = await apiClient.get('/analytics/revenue');
-    return normalizeAnalyticsResponse(response.data) as RevenueMetricsResponse;
+    const { data } = await requestEnvelope<RevenueRow[]>({ url: '/api/v1/analytics/revenue', method: 'GET' });
+    const rows = Array.isArray(data) ? data : [];
+    const totalRevenue = rows.reduce((sum, row) => sum + Number(row.revenue ?? 0), 0);
+    const totalProfit = rows.reduce((sum, row) => sum + Number(row.profit ?? 0), 0);
+    const totalOrders = rows.reduce((sum, row) => sum + Number(row.transactions ?? 0), 0);
+    const previousRevenue = rows.length > 1 ? Number(rows[rows.length - 2]?.revenue ?? 0) : 0;
+    const currentRevenue = rows.length > 0 ? Number(rows[rows.length - 1]?.revenue ?? 0) : 0;
+
+    return {
+      total_revenue: totalRevenue,
+      total_profit: totalProfit,
+      total_orders: totalOrders,
+      average_order_value: totalOrders > 0 ? totalRevenue / totalOrders : 0,
+      growth_rate: previousRevenue > 0 ? ((currentRevenue - previousRevenue) / previousRevenue) * 100 : 0,
+    };
   },
 
-  // Get top selling products
-  // Oracle: GET /api/v1/analytics/top-products
   getTopProducts: async (): Promise<TopProductsResponse[]> => {
-    const response = await apiClient.get('/analytics/top-products');
-    const data = normalizeAnalyticsResponse(response.data);
-    // Ensure array response
-    return Array.isArray(data) ? data : (data as any)?.products || [];
+    const { data } = await requestEnvelope<Array<Record<string, unknown>>>({ url: '/api/v1/analytics/top-products', method: 'GET' });
+    return (Array.isArray(data) ? data : []).map((item) => ({
+      product_id: String(item.product_id ?? ''),
+      name: String(item.name ?? 'Unknown Product'),
+      sku_code: String(item.sku_code ?? ''),
+      total_sold: Number(item.quantity ?? 0),
+      revenue: Number(item.revenue ?? 0),
+    }));
   },
 
-  // Get revenue breakdown by category
-  // Oracle: GET /api/v1/analytics/categories
   getCategoryBreakdown: async (): Promise<CategoryBreakdownResponse[]> => {
-    const response = await apiClient.get('/analytics/categories');
-    const data = normalizeAnalyticsResponse(response.data);
-    // Ensure array response
-    return Array.isArray(data) ? data : (data as any)?.categories || [];
+    const { data } = await requestEnvelope<Array<Record<string, unknown>>>({ url: '/api/v1/analytics/category-breakdown', method: 'GET' });
+    return (Array.isArray(data) ? data : []).map((item) => ({
+      category_id: String(item.category_id ?? ''),
+      name: String(item.name ?? 'Uncategorised'),
+      revenue: Number(item.revenue ?? 0),
+      profit: Number(item.profit ?? 0),
+      percentage: Number(item.share_pct ?? 0),
+    }));
   },
 
-  // Get payment mode distribution
-  // Oracle: GET /api/v1/analytics/payment-modes
   getPaymentModeSummary: async (): Promise<PaymentModeSummaryResponse[]> => {
-    const response = await apiClient.get('/analytics/payment-modes');
-    const data = normalizeAnalyticsResponse(response.data);
-    // Ensure array response
-    return Array.isArray(data) ? data : (data as any)?.payment_modes || [];
+    const { data } = await requestEnvelope<Array<Record<string, unknown>>>({ url: '/api/v1/analytics/payment-modes', method: 'GET' });
+    return (Array.isArray(data) ? data : []).map((item) => ({
+      payment_mode: String(item.mode ?? 'UNKNOWN'),
+      count: Number(item.txn_count ?? 0),
+      amount: Number(item.revenue ?? 0),
+      percentage: Number(item.rev_share_pct ?? item.txn_share_pct ?? 0),
+    }));
   },
 
-  // Get customer analytics
-  // Oracle: GET /api/v1/analytics/customers
   getCustomerAnalytics: async () => {
-    const response = await apiClient.get('/analytics/customers');
-    return normalizeAnalyticsResponse(response.data);
+    const { data } = await requestEnvelope<Record<string, unknown>>({ url: '/api/v1/analytics/customers/summary', method: 'GET' });
+    return data;
   },
 
-  // Get profit contribution analysis
-  // Oracle: GET /api/v1/analytics/contribution
   getProfitContribution: async () => {
-    const response = await apiClient.get('/analytics/contribution');
-    return normalizeAnalyticsResponse(response.data);
+    const { data } = await requestEnvelope<Record<string, unknown>>({ url: '/api/v1/analytics/contribution', method: 'GET' });
+    return data;
   },
 
-  // Get diagnostic metrics
-  // Oracle: GET /api/v1/analytics/diagnostics
   getDiagnostics: async () => {
-    const response = await apiClient.get('/analytics/diagnostics');
-    return normalizeAnalyticsResponse(response.data);
+    const { data } = await requestEnvelope<Record<string, unknown>>({ url: '/api/v1/analytics/diagnostics', method: 'GET' });
+    return data;
   },
 };

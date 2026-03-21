@@ -4,23 +4,54 @@
  * Last item from Section 11 risks addressed here: Mixed response envelopes
  */
 import type {
+  AiRecommendation,
   AuthTokens,
   Category,
   ChainGroup,
+  CreditAccount,
+  CreditTransaction,
   CurrentUser,
+  Customer,
+  CustomerAnalytics,
+  CustomerSummary,
+  DashboardAlert,
+  DashboardIncident,
+  DashboardOverview,
+  DashboardSignal,
+  Decision,
+  DecisionsMeta,
+  EInvoice,
   EventRecord,
+  ForecastMeta,
+  ForecastPoint,
+  HistoricalPoint,
   KycProvider,
   KycRecord,
   LoyaltyProgram,
+  MarketplaceCatalogItem,
+  MarketplaceOrder,
+  MarketplaceRfq,
+  MarketplaceTracking,
+  NlpResponse,
   OcrJob,
+  OfflineSnapshot,
   PaymentProvider,
+  PriceHistoryEntry,
+  PricingRules,
+  PricingSuggestion,
   PrintJob,
   Product,
   PurchaseOrder,
   ReceiptTemplate,
+  StaffPerformanceDetail,
+  StaffPerformanceSummary,
+  StaffSession,
   StoreProfile,
   StoreTaxConfig,
+  SupportedCountry,
+  SupportedCurrency,
   Supplier,
+  TopCustomer,
   TransactionDetail,
   TransactionLineItem,
   TransactionSummaryRow,
@@ -65,8 +96,8 @@ export interface RegisterRequest {
   mobile_number: string;
   password: string;
   full_name: string;
-  store_name?: string;
-  email: string;
+  store_name: string;
+  email?: string | null;
   role?: string;
 }
 
@@ -84,8 +115,7 @@ export interface VerifyOtpRequest {
 export type VerifyOtpResponse = AuthTokens;
 
 export interface ResendOtpRequest {
-  contact?: string;
-  mobile_number?: string;
+  contact: string;
   purpose?: string;
 }
 
@@ -287,7 +317,7 @@ export interface BatchTransactionCreateRequest {
 }
 
 export interface BatchTransactionCreateResponse {
-  results?: Array<{ transaction_id: string; status: string; message?: string }>;
+  results?: Array<{ transaction_id: string; status: string; error?: string; message?: string }>;
   message?: string;
 }
 
@@ -328,11 +358,18 @@ export interface GetDailyTransactionSummaryResponse {
   total_sales: number;
   total_transactions: number;
   total_returns?: number;
+  net_sales?: number;
+  payment_breakdown?: Record<string, number>;
 }
 
 export type GetReceiptTemplateResponse = ReceiptTemplate;
 
-export type UpdateReceiptTemplateRequest = ReceiptTemplate;
+export interface UpdateReceiptTemplateRequest {
+  header_text: string | null;
+  footer_text: string | null;
+  show_gstin: boolean;
+  paper_width_mm: number | null;
+}
 
 export type UpdateReceiptTemplateResponse = ReceiptTemplate;
 
@@ -352,9 +389,12 @@ export interface LookupBarcodeRequest {
 }
 
 export interface LookupBarcodeResponse {
-  barcode: string;
-  product_id?: number | null;
-  product_name?: string | null;
+  barcode_value: string;
+  barcode_type: string;
+  product_id: number;
+  product_name: string;
+  current_stock: number;
+  price: number;
 }
 
 export interface UploadOcrRequest {
@@ -466,13 +506,18 @@ export type GetSupplierResponse = Supplier;
 
 export interface CreateSupplierRequest {
   name: string;
-  contact?: string | null;
+  contact_person?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  gst_number?: string | null;
 }
 
 export type CreateSupplierResponse = Supplier;
 
 export interface UpdateSupplierRequest extends Partial<CreateSupplierRequest> {
   is_active?: boolean;
+  name?: string;
 }
 
 export type UpdateSupplierResponse = Supplier;
@@ -626,4 +671,298 @@ export type UpdateLoyaltyProgramResponse = LoyaltyProgram;
 
 export interface GetFinanceResponse {
   data: Record<string, unknown>;
+}
+
+// ── Customers ────────────────────────────────────────────────
+export interface ListCustomersRequest {
+  page?: number;
+  page_size?: number;
+  name?: string;
+  mobile?: string;
+  created_after?: string;
+  created_before?: string;
+}
+
+export interface ListCustomersResponse {
+  data: Customer[];
+  meta: { page: number; page_size: number; total: number };
+}
+
+export interface CreateCustomerRequest {
+  name: string;
+  mobile_number: string;
+  email?: string | null;
+  gender?: string | null;
+  birth_date?: string | null;
+  address?: string | null;
+  notes?: string | null;
+}
+
+export type CreateCustomerResponse = Customer;
+
+export interface UpdateCustomerRequest {
+  name?: string;
+  mobile_number?: string;
+  email?: string | null;
+  gender?: string | null;
+  birth_date?: string | null;
+  address?: string | null;
+  notes?: string | null;
+}
+
+export type UpdateCustomerResponse = Customer;
+
+export interface CustomerTransactionsRequest {
+  page?: number;
+  page_size?: number;
+  date_from?: string;
+  date_to?: string;
+  category_id?: number;
+  min_amount?: number;
+  max_amount?: number;
+}
+
+export interface CustomerTransactionsResponse {
+  data: Array<{ transaction_id: string; created_at: string; payment_mode: string; notes: string | null }>;
+  meta: { page: number; page_size: number; total: number };
+}
+
+export type GetCustomerSummaryResponse = CustomerSummary;
+export type GetCustomerAnalyticsResponse = CustomerAnalytics;
+
+export interface TopCustomersRequest {
+  metric?: 'revenue' | 'visits';
+  limit?: number;
+}
+
+export type TopCustomersResponse = TopCustomer[];
+
+// ── Dashboard ────────────────────────────────────────────────
+export type GetDashboardOverviewResponse = DashboardOverview;
+
+export interface GetDashboardAlertsResponse {
+  alerts: DashboardAlert[];
+  has_more: boolean;
+  next_cursor: string | null;
+}
+
+export interface GetDashboardSignalsResponse {
+  signals: DashboardSignal[];
+  last_updated: string;
+}
+
+export interface GetDashboardForecastsResponse {
+  data: Array<{
+    store_id: number;
+    store_name: string;
+    forecast: Array<{ date: string; predicted_sales: number; confidence: number }>;
+    total_predicted: number;
+    accuracy: number;
+  }>;
+}
+
+export type GetDashboardIncidentsResponse = DashboardIncident[];
+
+// ── Staff Performance ────────────────────────────────────────
+export type GetStaffSessionResponse = StaffSession;
+
+export interface StartSessionResponse {
+  session_id: string;
+}
+
+export interface EndSessionResponse {
+  message: string;
+}
+
+export type GetAllStaffPerformanceResponse = StaffPerformanceSummary[];
+
+export type GetStaffPerformanceDetailResponse = StaffPerformanceDetail;
+
+export interface UpsertStaffTargetRequest {
+  user_id: number;
+  target_date: string;
+  revenue_target?: number;
+  transaction_count_target?: number;
+}
+
+export interface UpsertStaffTargetResponse {
+  message: string;
+}
+
+// ── Pricing ──────────────────────────────────────────────────
+export type ListPricingSuggestionsResponse = PricingSuggestion[];
+
+export interface ApplyPricingSuggestionResponse {
+  message: string;
+}
+
+export interface DismissPricingSuggestionResponse {
+  message: string;
+}
+
+export type GetPriceHistoryResponse = PriceHistoryEntry[];
+
+export type GetPricingRulesResponse = PricingRules;
+
+export type UpdatePricingRulesRequest = PricingRules;
+
+export type UpdatePricingRulesResponse = PricingRules;
+
+// ── AI Decisions ─────────────────────────────────────────────
+export interface GetDecisionsResponse {
+  data: Decision[];
+  meta: DecisionsMeta;
+}
+
+// ── Forecasting ──────────────────────────────────────────────
+export interface GetStoreForecastRequest {
+  horizon?: number;
+}
+
+export interface GetStoreForecastResponse {
+  historical: HistoricalPoint[];
+  forecast: ForecastPoint[];
+  meta: ForecastMeta;
+}
+
+export interface GetSkuForecastRequest {
+  horizon?: number;
+}
+
+export type GetSkuForecastResponse = GetStoreForecastResponse;
+
+export interface GetDemandSensingResponse {
+  model_type: string;
+  horizon: number;
+  forecast: Array<{ date: string; value: number }>;
+}
+
+// ── E-Invoicing ──────────────────────────────────────────────
+export interface GenerateEInvoiceRequest {
+  transaction_id: string;
+  country_code?: string;
+}
+
+export interface GenerateEInvoiceResponse {
+  status: string;
+  invoice_id?: string;
+  invoice_number?: string;
+  authority_ref?: string;
+  qr_code_url?: string;
+}
+
+export type GetEInvoiceStatusResponse = EInvoice;
+
+// ── Marketplace ──────────────────────────────────────────────
+export interface MarketplaceSearchRequest {
+  query?: string;
+  category?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface MarketplaceSearchResponse {
+  items: MarketplaceCatalogItem[];
+  total: number;
+}
+
+export type MarketplaceRecommendationsResponse = MarketplaceCatalogItem[];
+
+export interface CreateRfqRequest {
+  product_name: string;
+  quantity: number;
+  specifications?: string;
+}
+
+export type CreateRfqResponse = MarketplaceRfq;
+export type GetRfqResponse = MarketplaceRfq;
+
+export interface CreateMarketplaceOrderRequest {
+  items: Array<{ catalog_item_id: string; quantity: number }>;
+  shipping_address?: string;
+}
+
+export type CreateMarketplaceOrderResponse = MarketplaceOrder;
+
+export interface ListMarketplaceOrdersResponse {
+  orders: MarketplaceOrder[];
+  total: number;
+}
+
+export type GetMarketplaceOrderResponse = MarketplaceOrder;
+export type GetMarketplaceTrackingResponse = MarketplaceTracking;
+
+export interface SupplierOnboardRequest {
+  company_name: string;
+  contact_name: string;
+  email: string;
+  phone: string;
+}
+
+export interface SupplierOnboardResponse {
+  supplier_id: string;
+  status: string;
+}
+
+// ── NLP / AI ─────────────────────────────────────────────────
+export interface NlpQueryRequest {
+  query_text: string;
+}
+
+export type NlpQueryResponse = NlpResponse;
+
+export interface AiAssistantQueryRequest {
+  query: string;
+}
+
+export interface AiAssistantQueryResponse {
+  response: string;
+}
+
+export interface AiRecommendRequest {
+  user_id?: number;
+}
+
+export interface AiRecommendResponse {
+  recommendations: AiRecommendation[];
+}
+
+// ── I18n ─────────────────────────────────────────────────────
+export interface GetTranslationsResponse {
+  locale: string;
+  catalog: Record<string, string>;
+}
+
+export interface GetSupportedCurrenciesResponse {
+  data: SupportedCurrency[];
+}
+
+export interface GetSupportedCountriesResponse {
+  data: SupportedCountry[];
+}
+
+// ── Offline ──────────────────────────────────────────────────
+export type GetOfflineSnapshotResponse = OfflineSnapshot;
+
+// ── Credit (standalone) ──────────────────────────────────────
+export type GetCreditAccountResponse = CreditAccount;
+
+export interface ListCreditTransactionsRequest {
+  page?: number;
+  page_size?: number;
+}
+
+export interface ListCreditTransactionsResponse {
+  data: CreditTransaction[];
+  meta: { page: number; page_size: number; total: number };
+}
+
+export interface CreditRepayRequest {
+  amount: number;
+  notes?: string;
+}
+
+export interface CreditRepayResponse {
+  message: string;
+  new_balance: number;
 }

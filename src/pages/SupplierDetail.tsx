@@ -31,7 +31,7 @@ export default function SupplierDetailPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'orders'>('overview');
 
   // Check if user is owner or staff
-  const user = authStore.getState().user;
+  const _user = authStore.getState().user;
 
   // Queries
   const { data: supplier, isLoading: supplierLoading, error: supplierError } = useSupplierQuery(supplierId!);
@@ -41,7 +41,7 @@ export default function SupplierDetailPage() {
   });
 
   // Product columns
-  const productColumns: Column<SupplierProduct>[] = [
+  const _productColumns: Column<SupplierProduct>[] = [
     {
       key: 'sku_code',
       header: 'SKU',
@@ -189,7 +189,7 @@ export default function SupplierDetailPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <div>
               <p className="text-sm text-gray-500">Contact Person</p>
-              <p className="font-medium">{supplier.contact}</p>
+              <p className="font-medium">{supplier.contact_person}</p>
             </div>
             {supplier.email && (
               <div>
@@ -213,12 +213,6 @@ export default function SupplierDetailPage() {
               <div>
                 <p className="text-sm text-gray-500">GST Number</p>
                 <p className="font-medium">{supplier.gst_number}</p>
-              </div>
-            )}
-            {supplier.payment_terms && (
-              <div>
-                <p className="text-sm text-gray-500">Payment Terms</p>
-                <p className="font-medium">{supplier.payment_terms}</p>
               </div>
             )}
             <div>

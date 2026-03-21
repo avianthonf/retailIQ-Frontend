@@ -1,10 +1,11 @@
 /**
  * src/api/finance.ts
- * Finance API - KYC, Credit, Loans, Treasury
+ * Backend-aligned finance adapters
  */
-import { apiClient } from './client';
+import { request } from './client';
 
-// Finance types
+const FINANCE_BASE = '/api/v2/finance';
+
 export interface KYCRecord {
   id: string;
   provider: string;
@@ -125,98 +126,321 @@ export interface TreasuryTransaction {
   completed_at?: string;
 }
 
-// Finance API
+interface FinanceDashboardResponse {
+  cash_on_hand?: number;
+  treasury_balance?: number;
+  total_debt?: number;
+  credit_score?: number;
+}
+
+interface RawLoanApplication {
+  id: string | number;
+  amount?: number;
+  status?: string;
+  applied_at?: string;
+}
+
+interface RawAccount {
+  id: string | number;
+  type?: string;
+  balance?: number;
+}
+
+interface RawLedgerEntry {
+  id: string | number;
+  txn_id?: string;
+  account_id?: string | number;
+  type?: string;
+  amount?: number;
+  description?: string;
+  created_at?: string;
+}
+
+const nowIso = () => new Date().toISOString();
+
+const mapKycStatus = (status?: string): KYCRecord['status'] => {
+  switch (status) {
+    case 'VERIFIED':
+      return 'VERIFIED';
+    case 'REJECTED':
+      return 'REJECTED';
+    case 'FAILED':
+      return 'FAILED';
+    default:
+      return 'PENDING';
+  }
+};
+
+const mapLoanStatus = (status?: string): LoanApplication['status'] => {
+  switch (status) {
+    case 'APPROVED':
+      return 'APPROVED';
+    case 'REJECTED':
+      return 'REJECTED';
+    case 'DISBURSED':
+    case 'REPAYING':
+      return 'DISBURSED';
+    case 'CLOSED':
+      return 'CLOSED';
+    default:
+      return 'PENDING';
+  }
+};
+
+const mapLoan = (loan: RawLoanApplication): LoanApplication => ({
+  id: String(loan.id),
+  product_id: '',
+  amount: Number(loan.amount ?? 0),
+  tenure_months: 0,
+  status: mapLoanStatus(loan.status),
+  submitted_at: loan.applied_at ?? nowIso(),
+});
+
+const mapAccountType = (type?: string): FinancialAccount['type'] => {
+  switch (type) {
+    case 'RESERVE':
+      return 'ESCROW';
+    case 'SAVINGS':
+      return 'SAVINGS';
+    default:
+      return 'CURRENT';
+  }
+};
+
+const mapLedgerEntryType = (type?: string): LedgerEntry['entry_type'] => (type === 'DEBIT' ? 'DEBIT' : 'CREDIT');
+
+const mapTreasuryTransactionType = (type?: string): TreasuryTransaction['type'] =>
+  type === 'DEBIT' ? 'TRANSFER_OUT' : 'TRANSFER_IN';
+
+const defaultTreasuryConfig = (): TreasuryConfig => ({
+  auto_transfer_enabled: false,
+  reserve_percentage: 0,
+  daily_transfer_limit: 0,
+  settlement_account_id: '',
+});
+
+const getFinanceDashboard = () => request<FinanceDashboardResponse>({ url: `${FINANCE_BASE}/dashboard`, method: 'GET' });
+
 export const financeApi = {
-  // KYC
   submitKYC: async (data: KYCSubmission): Promise<KYCRecord> => {
-    const response = await apiClient.post('/v2/finance/kyc', data);
-    return response.data;
+    const response = await request<{ status?: string }>({
+      url: `${FINANCE_BASE}/kyc/submit`,
+      method: 'POST',
+      data: {
+        business_type: data.document_type || data.provider,
+        tax_id: data.document_number,
+        document_urls: {
+          holder_name: data.full_name,
+          date_of_birth: data.date_of_birth,
+          address: data.address,
+        },
+      },
+    });
+
+    return {
+      id: `kyc-${data.document_number}`,
+      provider: data.provider,
+      status: mapKycStatus(response.status),
+      submitted_at: nowIso(),
+      reference_id: data.document_number,
+    };
   },
 
-  getKYCStatus: async (): Promise<KYCRecord> => {
-    const response = await apiClient.get('/v2/finance/kyc');
-    return response.data;
+  getKYCStatus: async (): Promise<KYCRecord | null> => {
+    const response = await request<{ status?: string; tax_id?: string; updated_at?: string }>({
+      url: `${FINANCE_BASE}/kyc/status`,
+      method: 'GET',
+    });
+
+    if (!response.status || response.status === 'NOT_STARTED') {
+      return null;
+    }
+
+    return {
+      id: `kyc-${response.tax_id ?? 'current'}`,
+      provider: 'RetailIQ',
+      status: mapKycStatus(response.status),
+      submitted_at: response.updated_at ?? nowIso(),
+      verified_at: response.status === 'VERIFIED' ? response.updated_at ?? undefined : undefined,
+      reference_id: response.tax_id ?? 'KYC',
+    };
   },
 
-  // Credit Score
   getCreditScore: async (): Promise<CreditScore> => {
-    const response = await apiClient.get('/v2/finance/credit-score');
-    return response.data;
+    const response = await request<{ score?: number; factors?: string[]; last_updated?: string }>({
+      url: `${FINANCE_BASE}/credit-score`,
+      method: 'GET',
+    });
+
+    return {
+      score: Number(response.score ?? 0),
+      max_score: 900,
+      last_updated: response.last_updated ?? nowIso(),
+      factors: Array.isArray(response.factors) ? response.factors : [],
+    };
   },
 
   refreshCreditScore: async (): Promise<CreditScore> => {
-    const response = await apiClient.post('/v2/finance/credit-score/refresh');
-    return response.data;
+    await request<{ score?: number }>({ url: `${FINANCE_BASE}/credit-score/refresh`, method: 'POST' });
+    return financeApi.getCreditScore();
   },
 
-  // Credit Ledger
   getCreditLedger: async (): Promise<CreditLedger> => {
-    const response = await apiClient.get('/v2/finance/credit-ledger');
-    return response.data;
+    const dashboard = await getFinanceDashboard();
+    const totalDebt = Number(dashboard.total_debt ?? 0);
+
+    return {
+      balance: totalDebt,
+      available_credit: 0,
+      total_credit_limit: totalDebt,
+      pending_charges: totalDebt,
+      currency: 'INR',
+    };
   },
 
-  getCreditTransactions: async (): Promise<CreditTransaction[]> => {
-    const response = await apiClient.get('/v2/finance/credit-transactions');
-    return response.data;
-  },
+  getCreditTransactions: async (): Promise<CreditTransaction[]> => [],
 
   repayCredit: async (amount: number): Promise<CreditTransaction> => {
-    const response = await apiClient.post('/v2/finance/credit-repayment', { amount });
-    return response.data;
+    const response = await request<{ payment_id?: string | number; status?: string; net_amount?: number }>({
+      url: `${FINANCE_BASE}/payments/process`,
+      method: 'POST',
+      data: {
+        amount,
+        payment_method: 'BANK_TRANSFER',
+      },
+    });
+
+    return {
+      id: String(response.payment_id ?? `payment-${Date.now()}`),
+      type: 'PAYMENT',
+      amount: Number(response.net_amount ?? amount),
+      description: 'Merchant payment processed',
+      created_at: nowIso(),
+      balance_after: 0,
+    };
   },
 
-  // Loans
-  getLoanProducts: async (): Promise<LoanProduct[]> => {
-    const response = await apiClient.get('/v2/finance/loan-products');
-    return response.data;
-  },
+  getLoanProducts: async (): Promise<LoanProduct[]> => [],
 
   getLoanApplications: async (): Promise<LoanApplication[]> => {
-    const response = await apiClient.get('/v2/finance/loan-applications');
-    return response.data;
+    const response = await request<RawLoanApplication[]>({ url: `${FINANCE_BASE}/loans`, method: 'GET' });
+    return Array.isArray(response) ? response.map(mapLoan) : [];
   },
 
   applyForLoan: async (data: LoanApplicationRequest): Promise<LoanApplication> => {
-    const response = await apiClient.post('/v2/finance/loan-applications', data);
-    return response.data;
+    const termMonths = Number.parseInt(data.tenure_months, 10) || 0;
+    const response = await request<{ application_id?: string | number; status?: string }>({
+      url: `${FINANCE_BASE}/loans/apply`,
+      method: 'POST',
+      data: {
+        product_id: data.product_id,
+        amount: data.amount,
+        term_days: Math.max(termMonths, 1) * 30,
+      },
+    });
+
+    return {
+      id: String(response.application_id ?? `loan-${Date.now()}`),
+      product_id: data.product_id,
+      amount: data.amount,
+      tenure_months: termMonths,
+      status: mapLoanStatus(response.status),
+      submitted_at: nowIso(),
+    };
   },
 
   getLoanApplication: async (applicationId: string): Promise<LoanApplication> => {
-    const response = await apiClient.get(`/v2/finance/loan-applications/${applicationId}`);
-    return response.data;
+    const applications = await financeApi.getLoanApplications();
+    const match = applications.find((application) => application.id === applicationId);
+    if (!match) {
+      throw new Error('Loan application not found.');
+    }
+    return match;
   },
 
-  // Accounts
   getFinancialAccounts: async (): Promise<FinancialAccount[]> => {
-    const response = await apiClient.get('/v2/finance/accounts');
-    return response.data;
+    const response = await request<RawAccount[]>({ url: `${FINANCE_BASE}/accounts`, method: 'GET' });
+
+    return Array.isArray(response)
+      ? response.map((account) => ({
+          id: String(account.id),
+          type: mapAccountType(account.type),
+          name: `${account.type ?? 'Account'} Account`,
+          balance: Number(account.balance ?? 0),
+          currency: 'INR',
+          is_active: true,
+        }))
+      : [];
   },
 
   getLedgerEntries: async (accountId?: string): Promise<LedgerEntry[]> => {
-    const params = accountId ? { account_id: accountId } : {};
-    const response = await apiClient.get('/v2/finance/ledger', { params });
-    return response.data;
+    const response = await request<RawLedgerEntry[]>({
+      url: `${FINANCE_BASE}/ledger`,
+      method: 'GET',
+      params: accountId ? { account_id: accountId } : undefined,
+    });
+
+    return Array.isArray(response)
+      ? response.map((entry) => ({
+          id: String(entry.id),
+          account_id: String(entry.account_id ?? ''),
+          entry_type: mapLedgerEntryType(entry.type),
+          amount: Number(entry.amount ?? 0),
+          description: entry.description ?? '',
+          reference_id: entry.txn_id,
+          created_at: entry.created_at ?? nowIso(),
+          balance_after: Number(entry.amount ?? 0),
+        }))
+      : [];
   },
 
-  // Treasury
   getTreasuryBalance: async (): Promise<TreasuryBalance> => {
-    const response = await apiClient.get('/v2/finance/treasury/balance');
-    return response.data;
+    const response = await request<{ available?: number; currency?: string }>({
+      url: `${FINANCE_BASE}/treasury/balance`,
+      method: 'GET',
+    });
+
+    const available = Number(response.available ?? 0);
+
+    return {
+      total_balance: available,
+      available_balance: available,
+      reserved_amount: 0,
+      pending_transfers: 0,
+      currency: response.currency ?? 'INR',
+      last_updated: nowIso(),
+    };
   },
 
-  getTreasuryConfig: async (): Promise<TreasuryConfig> => {
-    const response = await apiClient.get('/v2/finance/treasury/config');
-    return response.data;
-  },
+  getTreasuryConfig: async (): Promise<TreasuryConfig> => defaultTreasuryConfig(),
 
   updateTreasuryConfig: async (data: Partial<TreasuryConfig>): Promise<TreasuryConfig> => {
-    const response = await apiClient.put('/v2/finance/treasury/config', data);
-    return response.data;
+    await request<{ active?: boolean }>({
+      url: `${FINANCE_BASE}/treasury/sweep-config`,
+      method: 'PUT',
+      data: {
+        strategy: data.auto_transfer_enabled ? 'AUTO' : 'MANUAL',
+        min_balance: data.daily_transfer_limit ?? 0,
+      },
+    });
+
+    return {
+      ...defaultTreasuryConfig(),
+      ...data,
+    };
   },
 
   getTreasuryTransactions: async (): Promise<TreasuryTransaction[]> => {
-    const response = await apiClient.get('/v2/finance/treasury/transactions');
-    return response.data;
+    const ledgerEntries = await financeApi.getLedgerEntries();
+    return ledgerEntries.map((entry) => ({
+      id: entry.id,
+      type: mapTreasuryTransactionType(entry.entry_type),
+      amount: entry.amount,
+      description: entry.description,
+      status: 'COMPLETED',
+      created_at: entry.created_at,
+      completed_at: entry.created_at,
+    }));
   },
 
   processPayment: async (data: {
@@ -224,7 +448,23 @@ export const financeApi = {
     method: string;
     reference?: string;
   }): Promise<TreasuryTransaction> => {
-    const response = await apiClient.post('/v2/finance/payments', data);
-    return response.data;
+    const response = await request<{ payment_id?: string | number; status?: string; net_amount?: number }>({
+      url: `${FINANCE_BASE}/payments/process`,
+      method: 'POST',
+      data: {
+        amount: data.amount,
+        payment_method: data.method,
+      },
+    });
+
+    return {
+      id: String(response.payment_id ?? `payment-${Date.now()}`),
+      type: 'PAYMENT',
+      amount: Number(response.net_amount ?? data.amount),
+      description: data.reference ? `Payment ${data.reference}` : 'Payment processed',
+      status: response.status === 'FAILED' ? 'FAILED' : 'COMPLETED',
+      created_at: nowIso(),
+      completed_at: nowIso(),
+    };
   },
 };

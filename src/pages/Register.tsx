@@ -13,6 +13,7 @@ import { useRegisterMutation } from '@/hooks/auth';
 import { normalizeApiError } from '@/utils/errors';
 import { extractFieldErrors } from '@/utils/errors';
 import { uiStore } from '@/stores/uiStore';
+import { clearSession } from '@/utils/session';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
@@ -35,12 +36,29 @@ export default function RegisterPage() {
     setServerMessage(null);
     try {
       const result = await registerMutation.mutateAsync(values);
+      const otpPath = `/auth/otp?mobile_number=${encodeURIComponent(values.mobile_number)}`;
+      clearSession();
       addToast({ title: 'Registration started', message: result.message, variant: 'success' });
-      navigate(`/verify-otp?mobile_number=${encodeURIComponent(values.mobile_number)}`, { replace: true });
+      navigate(otpPath, {
+        replace: true,
+        state: { mobile_number: values.mobile_number },
+      });
+
+      // Fallback to a hard navigation if the router does not transition.
+      window.setTimeout(() => {
+        if (window.location.pathname !== '/auth/otp' && window.location.pathname !== '/verify-otp') {
+          window.location.assign(otpPath);
+        }
+      }, 0);
     } catch (error) {
       const apiError = normalizeApiError(error);
       if (apiError.status === 422) {
-        extractFieldErrors(apiError.fields, setError);
+        if (apiError.fields) {
+          extractFieldErrors(apiError.fields, setError);
+          return;
+        }
+
+        setServerMessage(apiError.message);
         return;
       }
 
