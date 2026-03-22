@@ -78,7 +78,16 @@ export default function LoginPage() {
       }
 
       if (apiError.status === 404) {
-        setServerMessage(apiError.message || 'No account found for that email. Please register first.');
+        const redirect = searchParams.get('redirect') || '/dashboard';
+        addToast({
+          title: 'No account found',
+          message: 'Let’s create your RetailIQ account first.',
+          variant: 'info',
+        });
+        navigate(`/register?email=${encodeURIComponent(values.email)}&redirect=${encodeURIComponent(redirect)}`, {
+          replace: true,
+          state: { email: values.email, redirect },
+        });
         return;
       }
 

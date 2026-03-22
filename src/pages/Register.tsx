@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AuthShell } from '@/components/layout/AuthShell';
 import { registerSchema, type RegisterFormValues } from '@/types/schemas';
 import { useRegisterMutation } from '@/hooks/auth';
@@ -19,9 +19,12 @@ const OTP_DELIVERY_RECOVERY_MESSAGE = 'We could not send the verification email 
 
 export default function RegisterPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const addToast = uiStore((state) => state.addToast);
   const registerMutation = useRegisterMutation();
   const [serverMessage, setServerMessage] = useState<string | null>(null);
+  const redirect = searchParams.get('redirect') || '/dashboard';
+  const email = searchParams.get('email') || '';
   const { register, handleSubmit, setError, formState: { errors, isSubmitting } } = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
@@ -29,7 +32,7 @@ export default function RegisterPage() {
       password: '',
       full_name: '',
       store_name: '',
-      email: '',
+      email,
       role: 'staff',
     },
   });
@@ -38,7 +41,7 @@ export default function RegisterPage() {
     setServerMessage(null);
     try {
       const result = await registerMutation.mutateAsync(values);
-      const otpPath = `/verify-otp?email=${encodeURIComponent(values.email)}&redirect=${encodeURIComponent('/dashboard')}`;
+      const otpPath = `/verify-otp?email=${encodeURIComponent(values.email)}&redirect=${encodeURIComponent(redirect)}`;
       clearSession();
       addToast({ title: 'Registration started', message: result.message, variant: 'success' });
       navigate(otpPath, {
@@ -55,7 +58,7 @@ export default function RegisterPage() {
     } catch (error) {
       const apiError = normalizeApiError(error);
       if (apiError.status === 503) {
-        const otpPath = `/verify-otp?email=${encodeURIComponent(values.email)}&redirect=${encodeURIComponent('/dashboard')}`;
+        const otpPath = `/verify-otp?email=${encodeURIComponent(values.email)}&redirect=${encodeURIComponent(redirect)}`;
         clearSession();
         addToast({
           title: 'Account created',

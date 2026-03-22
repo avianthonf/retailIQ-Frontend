@@ -94,4 +94,29 @@ describe('verification email recovery', () => {
     expect(screen.getByDisplayValue('signin@example.com')).toBeTruthy();
     expect(mocks.addToast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'warning' }));
   });
+
+  it('redirects unknown login emails into registration with the email preserved', async () => {
+    mocks.loginMutateAsync.mockRejectedValue({
+      status: 404,
+      message: 'No account found for that email',
+    });
+
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter initialEntries={['/login?redirect=%2Fdashboard']}>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.type(screen.getByLabelText(/email address/i), 'newuser@example.com');
+    await user.click(screen.getByRole('button', { name: /send otp/i }));
+
+    expect(await screen.findByDisplayValue('newuser@example.com')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /create account/i })).toBeTruthy();
+    expect(mocks.addToast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'info' }));
+  });
 });
