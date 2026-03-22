@@ -282,11 +282,4 @@ export async function postForm<T>(url: string, data: FormData, config: AxiosRequ
   return request<T>({ ...config, url, method: 'POST', data });
 }
 
-export const unsupportedApi = <T = never>(feature: string): Promise<T> => Promise.reject(
-  normalizeApiError({
-    message: `${feature} is not supported by the current backend.`,
-    status: 501,
-  }),
-);
-
 export const safeRetryable = isIdempotentRequest;
