@@ -14,6 +14,7 @@ import {
   useCreditScoreQuery,
   useCreditTransactionsQuery,
   useDisburseLoanMutation,
+  useFinanceDashboardQuery,
   useFinancialAccountsQuery,
   useKYCQuery,
   useLoanApplicationsQuery,
@@ -67,6 +68,7 @@ export default function FinancePage() {
   const loanApplicationsQuery = useLoanApplicationsQuery();
   const accountsQuery = useFinancialAccountsQuery();
   const treasuryBalanceQuery = useTreasuryBalanceQuery();
+  const financeDashboardQuery = useFinanceDashboardQuery();
   const treasuryConfigQuery = useTreasuryConfigQuery();
   const treasuryTransactionsQuery = useTreasuryTransactionsQuery();
 
@@ -97,9 +99,12 @@ export default function FinancePage() {
   const blockingError = kycQuery.error
     ?? creditScoreQuery.error
     ?? creditLedgerQuery.error
+    ?? creditTransactionsQuery.error
     ?? loanApplicationsQuery.error
     ?? accountsQuery.error
     ?? treasuryBalanceQuery.error
+    ?? financeDashboardQuery.error
+    ?? treasuryConfigQuery.error
     ?? treasuryTransactionsQuery.error;
   if (blockingError) {
     return (
@@ -112,9 +117,12 @@ export default function FinancePage() {
   const isLoading = kycQuery.isLoading
     || creditScoreQuery.isLoading
     || creditLedgerQuery.isLoading
+    || creditTransactionsQuery.isLoading
     || loanApplicationsQuery.isLoading
     || accountsQuery.isLoading
     || treasuryBalanceQuery.isLoading
+    || financeDashboardQuery.isLoading
+    || treasuryConfigQuery.isLoading
     || treasuryTransactionsQuery.isLoading;
 
   const kyc = kycQuery.data;
@@ -124,6 +132,7 @@ export default function FinancePage() {
   const loanApplications = loanApplicationsQuery.data ?? [];
   const accounts = accountsQuery.data ?? [];
   const treasuryBalance = treasuryBalanceQuery.data;
+  const financeDashboard = financeDashboardQuery.data;
   const treasuryTransactions = treasuryTransactionsQuery.data ?? [];
 
   const creditTransactionColumns: _Column<CreditTransaction>[] = [
@@ -324,7 +333,7 @@ export default function FinancePage() {
             <Card>
               <CardHeader><CardTitle className="text-sm font-medium text-gray-500">Credit Score</CardTitle></CardHeader>
               <CardContent>
-                <div className="text-3xl font-semibold">{creditScore?.score ?? 0}</div>
+                <div className="text-3xl font-semibold">{financeDashboard?.credit_score ?? creditScore?.score ?? 0}</div>
                 <div className="mt-3">
                   <Button size="sm" onClick={() => void refreshScore()} loading={refreshScoreMutation.isPending}>Refresh score</Button>
                 </div>
@@ -332,11 +341,11 @@ export default function FinancePage() {
             </Card>
             <Card>
               <CardHeader><CardTitle className="text-sm font-medium text-gray-500">Outstanding Credit</CardTitle></CardHeader>
-              <CardContent><div className="text-3xl font-semibold">{formatCurrency(creditLedger?.balance ?? 0)}</div></CardContent>
+              <CardContent><div className="text-3xl font-semibold">{formatCurrency(financeDashboard?.total_debt ?? creditLedger?.balance ?? 0)}</div></CardContent>
             </Card>
             <Card>
               <CardHeader><CardTitle className="text-sm font-medium text-gray-500">Treasury Balance</CardTitle></CardHeader>
-              <CardContent><div className="text-3xl font-semibold">{formatCurrency(treasuryBalance?.available_balance ?? 0)}</div></CardContent>
+              <CardContent><div className="text-3xl font-semibold">{formatCurrency(financeDashboard?.treasury_balance ?? treasuryBalance?.available_balance ?? 0)}</div></CardContent>
             </Card>
             <Card>
               <CardHeader><CardTitle className="text-sm font-medium text-gray-500">KYC Status</CardTitle></CardHeader>
@@ -449,6 +458,16 @@ export default function FinancePage() {
 
       {!isLoading && activeTab === 'treasury' && (
         <div className="space-y-6">
+          <Card>
+            <CardHeader><CardTitle>Treasury Configuration</CardTitle></CardHeader>
+            <CardContent className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div><div className="text-sm text-gray-500">Auto transfer</div><div className="text-xl font-semibold">{treasuryConfigQuery.data?.auto_transfer_enabled ? 'Enabled' : 'Disabled'}</div></div>
+              <div><div className="text-sm text-gray-500">Reserve %</div><div className="text-xl font-semibold">{treasuryConfigQuery.data?.reserve_percentage ?? 0}%</div></div>
+              <div><div className="text-sm text-gray-500">Daily limit</div><div className="text-xl font-semibold">{formatCurrency(treasuryConfigQuery.data?.daily_transfer_limit ?? 0)}</div></div>
+              <div><div className="text-sm text-gray-500">Strategy</div><div className="text-xl font-semibold">{treasuryConfigQuery.data?.strategy ?? 'OFF'}</div></div>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader><CardTitle>Treasury Balance</CardTitle></CardHeader>
             <CardContent className="grid grid-cols-1 md:grid-cols-4 gap-4">

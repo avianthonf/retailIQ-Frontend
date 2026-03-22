@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
-import { useCreatePurchaseOrderMutation } from '@/hooks/purchaseOrders';
+import { useCreatePurchaseOrderMutation, useUpdatePurchaseOrderMutation } from '@/hooks/purchaseOrders';
 import { useSuppliersQuery } from '@/hooks/suppliers';
 // import { useProductsQuery } from '@/hooks/inventory';
 import type { Supplier } from '@/api/suppliers';
@@ -45,12 +45,13 @@ const purchaseOrderSchema = z.object({
 type FormData = z.infer<typeof purchaseOrderSchema>;
 
 interface PurchaseOrderFormProps {
+  purchaseOrderId?: string;
   initialData?: Partial<FormData>;
   onSuccess?: (purchaseOrderId: string) => void;
   onCancel?: () => void;
 }
 
-export function PurchaseOrderForm({ initialData, onSuccess, onCancel }: PurchaseOrderFormProps) {
+export function PurchaseOrderForm({ purchaseOrderId, initialData, onSuccess, onCancel }: PurchaseOrderFormProps) {
   const navigate = useNavigate();
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [_productSearch, _setProductSearch] = useState('');
@@ -76,6 +77,8 @@ export function PurchaseOrderForm({ initialData, onSuccess, onCancel }: Purchase
 
   // Create PO mutation
   const createMutation = useCreatePurchaseOrderMutation();
+  const updateMutation = useUpdatePurchaseOrderMutation();
+  const saveMutation = purchaseOrderId ? updateMutation : createMutation;
 
   // Watch for changes
   const watchedLineItems = watch('line_items');
@@ -114,7 +117,12 @@ export function PurchaseOrderForm({ initialData, onSuccess, onCancel }: Purchase
   // Handle form submission
   const onSubmit = async (data: FormData) => {
     try {
-      const result = await createMutation.mutateAsync(data);
+      const result = purchaseOrderId
+        ? await updateMutation.mutateAsync({
+            purchaseOrderId,
+            data,
+          })
+        : await createMutation.mutateAsync(data);
       onSuccess?.(result.purchase_order_id);
       if (!onSuccess) {
         navigate(`/purchase-orders/${result.purchase_order_id}`);
@@ -165,10 +173,10 @@ export function PurchaseOrderForm({ initialData, onSuccess, onCancel }: Purchase
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       {/* Error State */}
-      {createMutation.error && (
+      {saveMutation.error && (
         <ErrorState
-          error={normalizeApiError(createMutation.error as unknown as ApiError)}
-          onRetry={() => createMutation.reset()}
+          error={normalizeApiError(saveMutation.error as unknown as ApiError)}
+          onRetry={() => saveMutation.reset()}
         />
       )}
 
@@ -459,12 +467,12 @@ export function PurchaseOrderForm({ initialData, onSuccess, onCancel }: Purchase
       {/* Actions */}
       <div className="flex justify-end space-x-4">
         {onCancel && (
-          <Button type="button" onClick={onCancel} variant="secondary">
-            Cancel
-          </Button>
-        )}
+        <Button type="button" onClick={onCancel} variant="secondary">
+          Cancel
+        </Button>
+      )}
         <Button type="submit" loading={isSubmitting}>
-          Create Purchase Order
+          {purchaseOrderId ? 'Save Purchase Order' : 'Create Purchase Order'}
         </Button>
       </div>
     </form>

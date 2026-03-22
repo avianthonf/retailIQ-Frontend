@@ -2,7 +2,7 @@
  * src/pages/WhatsApp.tsx
  * WhatsApp Integration Dashboard
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PageFrame } from '@/components/layout/PageFrame';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -13,7 +13,7 @@ import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
-import { 
+import {
   useWhatsAppConfigQuery,
   useWhatsAppTemplatesQuery,
   useWhatsAppMessagesQuery,
@@ -32,7 +32,6 @@ import {
   useSendTestWhatsAppMessageMutation
 } from '@/hooks/whatsapp';
 import { authStore } from '@/stores/authStore';
-import { backendCapabilities } from '@/config/backendCapabilities';
 import type { Column } from '@/components/ui/DataTable';
 import type { WhatsAppMessage, WhatsAppCampaign, WhatsAppTemplate } from '@/api/whatsapp';
 import { formatDate } from '@/utils/dates';
@@ -45,10 +44,19 @@ export default function WhatsAppPage() {
   const [selectedCampaign, setSelectedCampaign] = useState<WhatsAppCampaign | null>(null);
   const [_selectedMessage, _setSelectedMessage] = useState<WhatsAppMessage | null>(null);
   const [showSendMessageDialog, setShowSendMessageDialog] = useState(false);
+  const [showBulkSendDialog, setShowBulkSendDialog] = useState(false);
   const [showCreateTemplateDialog, setShowCreateTemplateDialog] = useState(false);
   const [showCreateCampaignDialog, setShowCreateCampaignDialog] = useState(false);
   const [showDeleteCampaignDialog, setShowDeleteCampaignDialog] = useState(false);
   const [showOptDialog, setShowOptDialog] = useState(false);
+  const [showTestDialog, setShowTestDialog] = useState(false);
+  const [configForm, setConfigForm] = useState({
+    phone_number_id: '',
+    waba_id: '',
+    webhook_secret: '',
+    access_token: '',
+    is_connected: false,
+  });
 
   // Form states
   const [messageForm, setMessageForm] = useState({
@@ -76,17 +84,25 @@ export default function WhatsAppPage() {
     phone: '',
     action: 'opt-in' as const,
   });
+  const [bulkForm, setBulkForm] = useState({
+    recipients: '',
+    message_type: 'TEXT' as const,
+    content: '',
+    template_name: '',
+    template_language: 'en',
+    template_variables: '{}',
+  });
+  const [testForm, setTestForm] = useState({
+    to: '',
+    template_name: '',
+    template_language: 'en',
+    template_variables: '{}',
+  });
 
   // Check if user is owner or staff
   const user = authStore.getState().user;
   const canManage = user?.role === 'owner' || user?.role === 'staff';
-  const tabs = ([
-    'overview',
-    'messages',
-    'templates',
-    ...(backendCapabilities.whatsapp.campaigns ? (['campaigns'] as const) : []),
-    'settings',
-  ] as const);
+  const tabs = (['overview', 'messages', 'templates', 'campaigns', 'settings'] as const);
 
   // Queries
   const { data: config, isLoading: configLoading, error: configError } = useWhatsAppConfigQuery();
@@ -98,17 +114,29 @@ export default function WhatsAppPage() {
   const { data: analytics, isLoading: _analyticsLoading } = useWhatsAppAnalyticsQuery();
 
   // Mutations
-  const _updateConfigMutation = useUpdateWhatsAppConfigMutation();
+  const updateConfigMutation = useUpdateWhatsAppConfigMutation();
   const createTemplateMutation = useCreateWhatsAppTemplateMutation();
   const sendMessageMutation = useSendWhatsAppMessageMutation();
-  const _sendBulkMessageMutation = useSendBulkWhatsAppMessagesMutation();
+  const sendBulkMessageMutation = useSendBulkWhatsAppMessagesMutation();
   const createCampaignMutation = useCreateWhatsAppCampaignMutation();
   const _updateCampaignMutation = useUpdateWhatsAppCampaignMutation();
   const deleteCampaignMutation = useDeleteWhatsAppCampaignMutation();
   const sendCampaignMutation = useSendWhatsAppCampaignMutation();
   const optInMutation = useOptInCustomerMutation();
   const optOutMutation = useOptOutCustomerMutation();
-  const _sendTestMutation = useSendTestWhatsAppMessageMutation();
+  const sendTestMutation = useSendTestWhatsAppMessageMutation();
+
+  useEffect(() => {
+    if (config) {
+      setConfigForm({
+        phone_number_id: config.phone_number_id ?? '',
+        waba_id: config.template_namespace ?? '',
+        webhook_secret: config.webhook_secret ?? '',
+        access_token: config.access_token ?? '',
+        is_connected: config.is_connected,
+      });
+    }
+  }, [config]);
 
   // Handlers
   const handleSendMessage = async () => {
@@ -177,6 +205,73 @@ export default function WhatsAppPage() {
         scheduled_at: '',
       });
       alert('Campaign created successfully');
+    } catch {
+      // Error handled by mutation
+    }
+  };
+
+  const handleBulkSend = async () => {
+    if (!bulkForm.recipients || !bulkForm.content) return;
+
+    try {
+      await sendBulkMessageMutation.mutateAsync(
+        bulkForm.recipients.split(',').map((recipient) => ({
+          to: recipient.trim(),
+          message_type: bulkForm.message_type,
+          content: bulkForm.content,
+          template_name: bulkForm.template_name || undefined,
+          template_language: bulkForm.template_language,
+          template_variables: JSON.parse(bulkForm.template_variables || '{}'),
+        })).filter((entry) => entry.to),
+      );
+      setShowBulkSendDialog(false);
+      setBulkForm({
+        recipients: '',
+        message_type: 'TEXT',
+        content: '',
+        template_name: '',
+        template_language: 'en',
+        template_variables: '{}',
+      });
+      alert('Bulk messages sent successfully');
+    } catch {
+      // Error handled by mutation
+    }
+  };
+
+  const handleTestMessage = async () => {
+    if (!testForm.to || !testForm.template_name) return;
+
+    try {
+      await sendTestMutation.mutateAsync({
+        to: testForm.to,
+        template_name: testForm.template_name,
+        template_language: testForm.template_language,
+        template_variables: JSON.parse(testForm.template_variables || '{}'),
+      });
+      setShowTestDialog(false);
+      setTestForm({
+        to: '',
+        template_name: '',
+        template_language: 'en',
+        template_variables: '{}',
+      });
+      alert('Test message sent successfully');
+    } catch {
+      // Error handled by mutation
+    }
+  };
+
+  const handleUpdateConfig = async () => {
+    try {
+      await updateConfigMutation.mutateAsync({
+        phone_number_id: configForm.phone_number_id,
+        template_namespace: configForm.waba_id,
+        webhook_secret: configForm.webhook_secret,
+        access_token: configForm.access_token,
+        is_connected: configForm.is_connected,
+      });
+      alert('WhatsApp settings updated successfully');
     } catch {
       // Error handled by mutation
     }
@@ -507,10 +602,24 @@ export default function WhatsAppPage() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {canManage && (
                   <>
-                    <div className="col-span-full rounded-md bg-gray-50 p-4 text-sm text-gray-600">
-                      This deployment supports WhatsApp configuration, template visibility, and delivery logs. Message
-                      sending, template creation, campaigns, and opt-in management are not exposed by the backend.
-                    </div>
+                    <Button variant="primary" onClick={() => setShowSendMessageDialog(true)}>
+                      Send Message
+                    </Button>
+                    <Button variant="secondary" onClick={() => setShowBulkSendDialog(true)}>
+                      Bulk Send
+                    </Button>
+                    <Button variant="secondary" onClick={() => setShowCreateTemplateDialog(true)}>
+                      Create Template
+                    </Button>
+                    <Button variant="secondary" onClick={() => setShowCreateCampaignDialog(true)}>
+                      Create Campaign
+                    </Button>
+                    <Button variant="secondary" onClick={() => setShowTestDialog(true)}>
+                      Test Message
+                    </Button>
+                    <Button variant="secondary" onClick={() => setShowOptDialog(true)}>
+                      Manage Opt-In
+                    </Button>
                   </>
                 )}
               </div>
@@ -529,7 +638,7 @@ export default function WhatsAppPage() {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="max-w-sm"
             />
-            {canManage && backendCapabilities.whatsapp.arbitraryMessaging && (
+            {canManage && (
               <Button variant="primary" onClick={() => setShowSendMessageDialog(true)}>
                 Send Message
               </Button>
@@ -563,7 +672,7 @@ export default function WhatsAppPage() {
       {activeTab === 'templates' && (
         <div className="space-y-6">
           <div className="flex items-center justify-end">
-            {canManage && backendCapabilities.whatsapp.templateCreation && (
+            {canManage && (
               <Button variant="primary" onClick={() => setShowCreateTemplateDialog(true)}>
                 Create Template
               </Button>
@@ -596,17 +705,19 @@ export default function WhatsAppPage() {
       {/* Campaigns Tab */}
       {activeTab === 'campaigns' && (
         <div className="space-y-6">
+          {canManage && (
+            <div className="flex justify-end">
+              <Button variant="primary" onClick={() => setShowCreateCampaignDialog(true)}>
+                Create Campaign
+              </Button>
+            </div>
+          )}
           <Card>
             <CardHeader>
               <CardTitle>Campaigns</CardTitle>
             </CardHeader>
             <CardContent>
-              {!backendCapabilities.whatsapp.campaigns ? (
-                <EmptyState
-                  title="Campaigns Not Available"
-                  body="The deployed backend does not implement WhatsApp campaign management endpoints."
-                />
-              ) : campaignsLoading ? (
+              {campaignsLoading ? (
                 <SkeletonLoader width="100%" height="400px" variant="rect" />
               ) : campaigns && campaigns.length > 0 ? (
                 <DataTable
@@ -626,89 +737,342 @@ export default function WhatsAppPage() {
 
       {/* Settings Tab */}
       {activeTab === 'settings' && config && canManage && (
-        <Card>
-          <CardHeader>
-            <CardTitle>WhatsApp Settings</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Phone Number ID</label>
-                <Input value={config.phone_number_id} disabled />
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>WhatsApp Settings</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input label="Phone Number ID" value={configForm.phone_number_id} onChange={(event) => setConfigForm((current) => ({ ...current, phone_number_id: event.target.value }))} />
+              <Input label="WABA ID" value={configForm.waba_id} onChange={(event) => setConfigForm((current) => ({ ...current, waba_id: event.target.value }))} />
+              <Input label="Webhook Secret" value={configForm.webhook_secret} onChange={(event) => setConfigForm((current) => ({ ...current, webhook_secret: event.target.value }))} />
+              <Input label="Access Token" value={configForm.access_token} onChange={(event) => setConfigForm((current) => ({ ...current, access_token: event.target.value }))} />
+              <label className="flex items-center gap-3 text-sm font-medium text-gray-700 md:col-span-2">
+                <input
+                  type="checkbox"
+                  checked={configForm.is_connected}
+                  onChange={(event) => setConfigForm((current) => ({ ...current, is_connected: event.target.checked }))}
+                />
+                Mark integration as connected
+              </label>
+              <div className="md:col-span-2">
+                <Button onClick={handleUpdateConfig} loading={updateConfigMutation.isPending}>
+                  Save settings
+                </Button>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Webhook URL</label>
-                <Input value={config.webhook_url} disabled />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Template Namespace</label>
-                <Input value={config.template_namespace || 'Not configured'} disabled />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Current Connection Snapshot</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4 text-sm">
+              <div><span className="text-gray-500">Webhook URL:</span> {config.webhook_url}</div>
+              <div><span className="text-gray-500">Verification:</span> {config.is_verified ? 'Verified' : 'Pending'}</div>
+              <div><span className="text-gray-500">Connected:</span> {config.is_connected ? 'Yes' : 'No'}</div>
+              <div><span className="text-gray-500">Namespace:</span> {config.template_namespace || 'Not configured'}</div>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
-      {/* Send Message Dialog */}
-      <ConfirmDialog
-        open={backendCapabilities.whatsapp.arbitraryMessaging && showSendMessageDialog}
-        title="Send Message"
-        body="Compose your WhatsApp message"
-        confirmLabel={sendMessageMutation.isPending ? 'Sending...' : 'Send'}
-        onConfirm={handleSendMessage}
-        onCancel={() => {
-          setShowSendMessageDialog(false);
-          setMessageForm({
-            to: '',
-            message_type: 'TEXT',
-            content: '',
-            template_name: '',
-            template_language: 'en',
-            template_variables: '{}',
-          });
-        }}
-      />
+      {showSendMessageDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg max-w-lg w-full space-y-4">
+            <h2 className="text-lg font-bold">Send Message</h2>
+            <Input
+              label="Recipient"
+              value={messageForm.to}
+              onChange={(event) => setMessageForm((current) => ({ ...current, to: event.target.value }))}
+            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Message Type</label>
+              <select
+                value={messageForm.message_type}
+                onChange={(event) => setMessageForm((current) => ({ ...current, message_type: event.target.value as typeof current.message_type }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              >
+                <option value="TEXT">Text</option>
+                <option value="TEMPLATE">Template</option>
+                <option value="IMAGE">Image</option>
+                <option value="DOCUMENT">Document</option>
+              </select>
+            </div>
+            <Input
+              label="Content"
+              value={messageForm.content}
+              onChange={(event) => setMessageForm((current) => ({ ...current, content: event.target.value }))}
+            />
+            <Input
+              label="Template Name"
+              value={messageForm.template_name}
+              onChange={(event) => setMessageForm((current) => ({ ...current, template_name: event.target.value }))}
+            />
+            <div className="flex justify-end space-x-2">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setShowSendMessageDialog(false);
+                  setMessageForm({
+                    to: '',
+                    message_type: 'TEXT',
+                    content: '',
+                    template_name: '',
+                    template_language: 'en',
+                    template_variables: '{}',
+                  });
+                }}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleSendMessage} loading={sendMessageMutation.isPending}>
+                Send
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
-      {/* Create Template Dialog */}
-      <ConfirmDialog
-        open={backendCapabilities.whatsapp.templateCreation && showCreateTemplateDialog}
-        title="Create Template"
-        body="Create a new WhatsApp message template"
-        confirmLabel={createTemplateMutation.isPending ? 'Creating...' : 'Create'}
-        onConfirm={handleCreateTemplate}
-        onCancel={() => {
-          setShowCreateTemplateDialog(false);
-          setTemplateForm({
-            name: '',
-            category: 'UTILITY',
-            language: 'en',
-            body: '',
-          });
-        }}
-      />
+      {showBulkSendDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg max-w-lg w-full space-y-4">
+            <h2 className="text-lg font-bold">Bulk Send Messages</h2>
+            <Input
+              label="Recipients (comma separated)"
+              value={bulkForm.recipients}
+              onChange={(event) => setBulkForm((current) => ({ ...current, recipients: event.target.value }))}
+            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Message Type</label>
+              <select
+                value={bulkForm.message_type}
+                onChange={(event) => setBulkForm((current) => ({ ...current, message_type: event.target.value as typeof current.message_type }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              >
+                <option value="TEXT">Text</option>
+                <option value="TEMPLATE">Template</option>
+              </select>
+            </div>
+            <Input
+              label="Content"
+              value={bulkForm.content}
+              onChange={(event) => setBulkForm((current) => ({ ...current, content: event.target.value }))}
+            />
+            <Input
+              label="Template Name"
+              value={bulkForm.template_name}
+              onChange={(event) => setBulkForm((current) => ({ ...current, template_name: event.target.value }))}
+            />
+            <Input
+              label="Template Language"
+              value={bulkForm.template_language}
+              onChange={(event) => setBulkForm((current) => ({ ...current, template_language: event.target.value }))}
+            />
+            <Input
+              label="Template Variables (JSON)"
+              value={bulkForm.template_variables}
+              onChange={(event) => setBulkForm((current) => ({ ...current, template_variables: event.target.value }))}
+            />
+            <div className="flex justify-end space-x-2">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setShowBulkSendDialog(false);
+                  setBulkForm({
+                    recipients: '',
+                    message_type: 'TEXT',
+                    content: '',
+                    template_name: '',
+                    template_language: 'en',
+                    template_variables: '{}',
+                  });
+                }}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleBulkSend} loading={sendBulkMessageMutation.isPending}>
+                Send bulk
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
-      {/* Create Campaign Dialog */}
-      <ConfirmDialog
-        open={backendCapabilities.whatsapp.campaigns && showCreateCampaignDialog}
-        title="Create Campaign"
-        body="Create a new WhatsApp campaign"
-        confirmLabel={createCampaignMutation.isPending ? 'Creating...' : 'Create'}
-        onConfirm={handleCreateCampaign}
-        onCancel={() => {
-          setShowCreateCampaignDialog(false);
-          setCampaignForm({
-            name: '',
-            description: '',
-            template_id: '',
-            recipients: '',
-            scheduled_at: '',
-          });
-        }}
-      />
+      {showCreateTemplateDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg max-w-lg w-full space-y-4">
+            <h2 className="text-lg font-bold">Create Template</h2>
+            <Input
+              label="Name"
+              value={templateForm.name}
+              onChange={(event) => setTemplateForm((current) => ({ ...current, name: event.target.value }))}
+            />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                <select
+                  value={templateForm.category}
+                  onChange={(event) => setTemplateForm((current) => ({ ...current, category: event.target.value as typeof current.category }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                >
+                  <option value="UTILITY">Utility</option>
+                  <option value="MARKETING">Marketing</option>
+                  <option value="AUTHENTICATION">Authentication</option>
+                </select>
+              </div>
+              <Input
+                label="Language"
+                value={templateForm.language}
+                onChange={(event) => setTemplateForm((current) => ({ ...current, language: event.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Body</label>
+              <textarea
+                value={templateForm.body}
+                onChange={(event) => setTemplateForm((current) => ({ ...current, body: event.target.value }))}
+                rows={4}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              />
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setShowCreateTemplateDialog(false);
+                  setTemplateForm({
+                    name: '',
+                    category: 'UTILITY',
+                    language: 'en',
+                    body: '',
+                  });
+                }}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleCreateTemplate} loading={createTemplateMutation.isPending}>
+                Create
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showTestDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg max-w-lg w-full space-y-4">
+            <h2 className="text-lg font-bold">Send Test Message</h2>
+            <Input
+              label="Recipient"
+              value={testForm.to}
+              onChange={(event) => setTestForm((current) => ({ ...current, to: event.target.value }))}
+            />
+            <Input
+              label="Template Name"
+              value={testForm.template_name}
+              onChange={(event) => setTestForm((current) => ({ ...current, template_name: event.target.value }))}
+            />
+            <Input
+              label="Template Language"
+              value={testForm.template_language}
+              onChange={(event) => setTestForm((current) => ({ ...current, template_language: event.target.value }))}
+            />
+            <Input
+              label="Template Variables (JSON)"
+              value={testForm.template_variables}
+              onChange={(event) => setTestForm((current) => ({ ...current, template_variables: event.target.value }))}
+            />
+            <div className="flex justify-end space-x-2">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setShowTestDialog(false);
+                  setTestForm({
+                    to: '',
+                    template_name: '',
+                    template_language: 'en',
+                    template_variables: '{}',
+                  });
+                }}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleTestMessage} loading={sendTestMutation.isPending}>
+                Send test
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCreateCampaignDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg max-w-lg w-full space-y-4">
+            <h2 className="text-lg font-bold">Create Campaign</h2>
+            <Input
+              label="Name"
+              value={campaignForm.name}
+              onChange={(event) => setCampaignForm((current) => ({ ...current, name: event.target.value }))}
+            />
+            <Input
+              label="Description"
+              value={campaignForm.description}
+              onChange={(event) => setCampaignForm((current) => ({ ...current, description: event.target.value }))}
+            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Template</label>
+              <select
+                value={campaignForm.template_id}
+                onChange={(event) => setCampaignForm((current) => ({ ...current, template_id: event.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              >
+                <option value="">Select template</option>
+                {templates?.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <Input
+              label="Recipients (comma separated)"
+              value={campaignForm.recipients}
+              onChange={(event) => setCampaignForm((current) => ({ ...current, recipients: event.target.value }))}
+            />
+            <Input
+              label="Schedule (optional)"
+              type="datetime-local"
+              value={campaignForm.scheduled_at}
+              onChange={(event) => setCampaignForm((current) => ({ ...current, scheduled_at: event.target.value }))}
+            />
+            <div className="flex justify-end space-x-2">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setShowCreateCampaignDialog(false);
+                  setCampaignForm({
+                    name: '',
+                    description: '',
+                    template_id: '',
+                    recipients: '',
+                    scheduled_at: '',
+                  });
+                }}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleCreateCampaign} loading={createCampaignMutation.isPending}>
+                Create
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Campaign Dialog */}
       <ConfirmDialog
-        open={backendCapabilities.whatsapp.campaigns && showDeleteCampaignDialog}
+        open={showDeleteCampaignDialog}
         title="Delete Campaign"
         body={`Are you sure you want to delete campaign "${selectedCampaign?.name}"?`}
         confirmLabel="Delete"
@@ -719,18 +1083,43 @@ export default function WhatsAppPage() {
         }}
       />
 
-      {/* Opt-in/Out Dialog */}
-      <ConfirmDialog
-        open={backendCapabilities.whatsapp.optInManagement && showOptDialog}
-        title="Manage Customer Opt-in/Out"
-        body="Enter customer phone number and select action"
-        confirmLabel={optInMutation.isPending || optOutMutation.isPending ? 'Processing...' : 'Submit'}
-        onConfirm={handleOptAction}
-        onCancel={() => {
-          setShowOptDialog(false);
-          setOptForm({ phone: '', action: 'opt-in' });
-        }}
-      />
+      {showOptDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg max-w-md w-full space-y-4">
+            <h2 className="text-lg font-bold">Manage Customer Opt-In</h2>
+            <Input
+              label="Phone"
+              value={optForm.phone}
+              onChange={(event) => setOptForm((current) => ({ ...current, phone: event.target.value }))}
+            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Action</label>
+              <select
+                value={optForm.action}
+                onChange={(event) => setOptForm((current) => ({ ...current, action: event.target.value as typeof current.action }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              >
+                <option value="opt-in">Opt In</option>
+                <option value="opt-out">Opt Out</option>
+              </select>
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setShowOptDialog(false);
+                  setOptForm({ phone: '', action: 'opt-in' });
+                }}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleOptAction} loading={optInMutation.isPending || optOutMutation.isPending}>
+                Submit
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </PageFrame>
   );
 }

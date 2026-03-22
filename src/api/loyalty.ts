@@ -3,7 +3,7 @@
  * Backend-aligned loyalty adapters
  */
 import { normalizeApiError } from '@/utils/errors';
-import { request, unsupportedApi } from './client';
+import { request } from './client';
 
 const LOYALTY_BASE = '/api/v1/loyalty';
 
@@ -117,14 +117,35 @@ interface RawProgram {
   min_redemption_points?: number;
   expiry_days?: number;
   is_active?: boolean;
+  tiers?: Array<{
+    id?: string;
+    name?: string;
+    description?: string;
+    min_points?: number;
+    max_points?: number | null;
+    benefits?: string[];
+    multiplier?: number;
+    created_at?: string;
+  }>;
 }
 
 interface RawAccount {
+  id?: string;
+  customer_id?: string;
+  customer_name?: string;
+  customer_phone?: string;
+  customer_email?: string;
+  program_id?: string;
+  tier_id?: string;
+  tier_name?: string;
   total_points?: number;
   redeemable_points?: number;
   lifetime_earned?: number;
   last_activity_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
   recent_transactions?: Array<{
+    id?: string;
     type?: string;
     points?: number;
     balance_after?: number;
@@ -161,6 +182,17 @@ const defaultProgram = (): LoyaltyProgram => ({
   updated_at: nowIso(),
 });
 
+const mapTier = (tier: NonNullable<RawProgram['tiers']>[number]): LoyaltyTier => ({
+  id: String(tier.id ?? ''),
+  name: tier.name ?? 'Base',
+  description: tier.description ?? '',
+  min_points: Number(tier.min_points ?? 0),
+  max_points: tier.max_points === null || tier.max_points === undefined ? undefined : Number(tier.max_points),
+  benefits: Array.isArray(tier.benefits) ? tier.benefits : [],
+  multiplier: Number(tier.multiplier ?? 1),
+  created_at: tier.created_at ?? nowIso(),
+});
+
 const mapProgram = (program: RawProgram): LoyaltyProgram => ({
   ...defaultProgram(),
   is_active: Boolean(program.is_active),
@@ -168,25 +200,25 @@ const mapProgram = (program: RawProgram): LoyaltyProgram => ({
   redemption_rate: Number(program.redemption_rate ?? 0),
   min_redemption_points: Number(program.min_redemption_points ?? 0),
   expiry_months: Math.round(Number(program.expiry_days ?? 0) / 30),
-  tiers: [defaultTier()],
+  tiers: Array.isArray(program.tiers) && program.tiers.length ? program.tiers.map(mapTier) : [defaultTier()],
 });
 
 const mapAccount = (customerId: string, account: RawAccount): LoyaltyAccount => ({
-  id: customerId,
-  customer_id: customerId,
-  customer_name: `Customer ${customerId}`,
-  customer_phone: '',
-  customer_email: undefined,
-  program_id: 'default',
-  tier_id: 'default',
-  tier_name: 'Base',
+  id: String(account.id ?? customerId),
+  customer_id: String(account.customer_id ?? customerId),
+  customer_name: account.customer_name ?? `Customer ${customerId}`,
+  customer_phone: account.customer_phone ?? '',
+  customer_email: account.customer_email ?? undefined,
+  program_id: account.program_id ?? 'default',
+  tier_id: account.tier_id ?? 'default',
+  tier_name: account.tier_name ?? 'Base',
   current_points: Number(account.total_points ?? 0),
   lifetime_points: Number(account.lifetime_earned ?? 0),
   points_earned: Number(account.lifetime_earned ?? 0),
   points_redeemed: Math.max(0, Number(account.lifetime_earned ?? 0) - Number(account.total_points ?? 0)),
   last_activity_at: account.last_activity_at ?? nowIso(),
-  created_at: account.last_activity_at ?? nowIso(),
-  updated_at: account.last_activity_at ?? nowIso(),
+  created_at: account.created_at ?? account.last_activity_at ?? nowIso(),
+  updated_at: account.updated_at ?? account.last_activity_at ?? nowIso(),
 });
 
 const mapTransactionType = (type?: string): LoyaltyTransaction['type'] => {
@@ -232,13 +264,30 @@ export const loyaltyApi = {
     return loyaltyApi.getProgram();
   },
 
-  createTier: async (_data: Omit<LoyaltyTier, 'id' | 'created_at'>): Promise<LoyaltyTier> =>
-    unsupportedApi('Loyalty tier management'),
+  createTier: async (data: Omit<LoyaltyTier, 'id' | 'created_at'>): Promise<LoyaltyTier> => {
+    const response = await request<NonNullable<RawProgram['tiers']>[number]>({
+      url: `${LOYALTY_BASE}/tiers`,
+      method: 'POST',
+      data,
+    });
+    return mapTier(response);
+  },
 
-  updateTier: async (_id: string, _data: Partial<LoyaltyTier>): Promise<LoyaltyTier> =>
-    unsupportedApi('Loyalty tier management'),
+  updateTier: async (id: string, data: Partial<LoyaltyTier>): Promise<LoyaltyTier> => {
+    const response = await request<NonNullable<RawProgram['tiers']>[number]>({
+      url: `${LOYALTY_BASE}/tiers/${id}`,
+      method: 'PATCH',
+      data,
+    });
+    return mapTier(response);
+  },
 
-  deleteTier: async (_id: string): Promise<void> => unsupportedApi('Loyalty tier management'),
+  deleteTier: async (id: string): Promise<void> => {
+    await request<{ id: string; deleted: boolean }>({
+      url: `${LOYALTY_BASE}/tiers/${id}`,
+      method: 'DELETE',
+    });
+  },
 
   getAccount: async (customerId: string): Promise<LoyaltyAccount> => {
     const response = await request<RawAccount>({ url: `${LOYALTY_BASE}/customers/${customerId}`, method: 'GET' });
@@ -318,8 +367,30 @@ export const loyaltyApi = {
     };
   },
 
-  adjustPoints: async (_data: PointsAdjustmentRequest): Promise<LoyaltyTransaction> =>
-    unsupportedApi('Manual loyalty point adjustments'),
+  adjustPoints: async (data: PointsAdjustmentRequest): Promise<LoyaltyTransaction> => {
+    const response = await request<{
+      id?: string;
+      type?: string;
+      points?: number;
+      balance_after?: number;
+      description?: string;
+      created_at?: string;
+    }>({
+      url: `${LOYALTY_BASE}/customers/${data.customer_id}/adjust`,
+      method: 'POST',
+      data,
+    });
+    return {
+      id: String(response.id ?? ''),
+      account_id: data.customer_id,
+      customer_id: data.customer_id,
+      type: mapTransactionType(response.type),
+      points: Number(response.points ?? data.points),
+      description: response.description ?? data.reason,
+      balance_after: Number(response.balance_after ?? 0),
+      created_at: response.created_at ?? nowIso(),
+    };
+  },
 
   getAnalytics: async (_params?: {
     from_date?: string;
@@ -330,6 +401,23 @@ export const loyaltyApi = {
       points_issued_this_month?: number;
       points_redeemed_this_month?: number;
       redemption_rate_this_month?: number;
+      top_customers?: Array<{
+        customer_id?: string;
+        customer_name?: string;
+        points?: number;
+        tier?: string;
+      }>;
+      tier_distribution?: Array<{
+        tier_name?: string;
+        customer_count?: number;
+        percentage?: number;
+      }>;
+      monthly_trends?: Array<{
+        month?: string;
+        points_earned?: number;
+        points_redeemed?: number;
+        new_customers?: number;
+      }>;
     }>({
       url: `${LOYALTY_BASE}/analytics`,
       method: 'GET',
@@ -341,32 +429,118 @@ export const loyaltyApi = {
       total_points_issued: Number(response.points_issued_this_month ?? 0),
       total_points_redeemed: Number(response.points_redeemed_this_month ?? 0),
       points_expiry_next_month: 0,
-      top_customers: [],
-      tier_distribution: [
-        {
-          tier_name: 'Base',
-          customer_count: Number(response.enrolled_customers ?? 0),
-          percentage: Number(response.enrolled_customers ?? 0) > 0 ? 100 : 0,
-        },
-      ],
-      monthly_trends: [],
+      top_customers: Array.isArray(response.top_customers)
+        ? response.top_customers.map((customer) => ({
+            customer_id: String(customer.customer_id ?? ''),
+            customer_name: customer.customer_name ?? 'Customer',
+            points: Number(customer.points ?? 0),
+            tier: customer.tier ?? 'Base',
+          }))
+        : [],
+      tier_distribution: Array.isArray(response.tier_distribution)
+        ? response.tier_distribution.map((tier) => ({
+            tier_name: tier.tier_name ?? 'Base',
+            customer_count: Number(tier.customer_count ?? 0),
+            percentage: Number(tier.percentage ?? 0),
+          }))
+        : [],
+      monthly_trends: Array.isArray(response.monthly_trends)
+        ? response.monthly_trends.map((trend) => ({
+            month: trend.month ?? '',
+            points_earned: Number(trend.points_earned ?? 0),
+            points_redeemed: Number(trend.points_redeemed ?? 0),
+            new_customers: Number(trend.new_customers ?? 0),
+          }))
+        : [],
     };
   },
 
-  bulkAdjustPoints: async (_adjustments: PointsAdjustmentRequest[]): Promise<{
+  bulkAdjustPoints: async (adjustments: PointsAdjustmentRequest[]): Promise<{
     successful: { customer_id: string; transaction: LoyaltyTransaction }[];
     failed: { customer_id: string; error: string }[];
-  }> => unsupportedApi('Bulk loyalty point adjustments'),
+  }> => {
+    const response = await request<{
+      successful?: Array<{
+        customer_id?: string;
+        transaction?: {
+          id?: string;
+          type?: string;
+          points?: number;
+          balance_after?: number;
+        };
+      }>;
+      failed?: Array<{ customer_id?: string; error?: string }>;
+    }>({
+      url: `${LOYALTY_BASE}/customers/adjustments/bulk`,
+      method: 'POST',
+      data: { adjustments },
+    });
 
-  getExpiringPoints: async (_days: number = 30): Promise<{
+    return {
+      successful: Array.isArray(response.successful)
+        ? response.successful.map((item) => ({
+            customer_id: String(item.customer_id ?? ''),
+            transaction: {
+              id: String(item.transaction?.id ?? ''),
+              account_id: String(item.customer_id ?? ''),
+              customer_id: String(item.customer_id ?? ''),
+              type: mapTransactionType(item.transaction?.type),
+              points: Number(item.transaction?.points ?? 0),
+              description: 'Bulk adjustment',
+              balance_after: Number(item.transaction?.balance_after ?? 0),
+              created_at: nowIso(),
+            },
+          }))
+        : [],
+      failed: Array.isArray(response.failed)
+        ? response.failed.map((item) => ({
+            customer_id: String(item.customer_id ?? ''),
+            error: item.error ?? 'Adjustment failed',
+          }))
+        : [],
+    };
+  },
+
+  getExpiringPoints: async (days: number = 30): Promise<{
     customer_id: string;
     customer_name: string;
     points: number;
     expires_at: string;
-  }[]> => [],
+  }[]> =>
+    request<Array<{
+      customer_id?: string;
+      customer_name?: string;
+      points?: number;
+      expires_at?: string;
+    }>>({
+      url: `${LOYALTY_BASE}/expiring-points`,
+      method: 'GET',
+      params: { days },
+    }).then((response) =>
+      Array.isArray(response)
+        ? response.map((item) => ({
+            customer_id: String(item.customer_id ?? ''),
+            customer_name: item.customer_name ?? 'Customer',
+            points: Number(item.points ?? 0),
+            expires_at: item.expires_at ?? nowIso(),
+          }))
+        : [],
+    ),
 
-  enrollCustomer: async (_customerId: string): Promise<LoyaltyAccount> => unsupportedApi('Loyalty enrollment'),
+  enrollCustomer: async (customerId: string): Promise<LoyaltyAccount> => {
+    const response = await request<RawAccount>({
+      url: `${LOYALTY_BASE}/customers/${customerId}/enroll`,
+      method: 'POST',
+    });
+    return mapAccount(customerId, response);
+  },
 
-  updateCustomerTier: async (_customerId: string, _tierId: string): Promise<LoyaltyAccount> =>
-    unsupportedApi('Customer loyalty tier management'),
+  updateCustomerTier: async (customerId: string, tierId: string): Promise<LoyaltyAccount> => {
+    const response = await request<RawAccount>({
+      url: `${LOYALTY_BASE}/customers/${customerId}/tier`,
+      method: 'PUT',
+      data: { tier_id: tierId },
+    });
+    return mapAccount(customerId, response);
+  },
 };

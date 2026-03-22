@@ -2,7 +2,7 @@
  * src/api/suppliers.ts
  * Backend-aligned supplier adapters
  */
-import { request, unsupportedApi } from './client';
+import { request } from './client';
 
 const SUPPLIERS_BASE = '/api/v1/suppliers';
 
@@ -65,27 +65,28 @@ export interface SupplierListResponse {
 }
 
 interface RawSupplierListItem {
-  supplier_id?: number | string;
+  id?: string;
   name?: string;
-  contact_person?: string;
+  contact_name?: string;
   phone?: string;
   email?: string;
-  address?: string;
-  gst_number?: string;
-  is_active?: boolean;
-  created_at?: string;
+  payment_terms_days?: number;
+  avg_lead_time_days?: number | null;
+  fill_rate_90d?: number;
+  price_change_6m_pct?: number | null;
 }
 
 interface RawSupplierDetail {
-  supplier_id?: number | string;
+  id?: string;
   name?: string;
-  contact_person?: string;
-  phone?: string;
-  email?: string;
-  address?: string;
-  gst_number?: string;
+  contact?: {
+    name?: string;
+    phone?: string;
+    email?: string;
+    address?: string;
+  };
+  payment_terms_days?: number;
   is_active?: boolean;
-  created_at?: string;
   analytics?: {
     avg_lead_time_days?: number;
     fill_rate_90d?: number;
@@ -105,17 +106,17 @@ interface RawSupplierDetail {
 const nowIso = () => new Date().toISOString();
 
 const mapListSupplier = (supplier: RawSupplierListItem): Supplier => ({
-  supplier_id: String(supplier.supplier_id ?? ''),
+  supplier_id: String(supplier.id ?? ''),
   store_id: '',
   name: supplier.name ?? '',
-  contact_person: supplier.contact_person ?? '',
+  contact_person: supplier.contact_name ?? '',
   email: supplier.email ?? undefined,
   phone: supplier.phone ?? undefined,
-  address: supplier.address ?? undefined,
-  gst_number: supplier.gst_number ?? undefined,
-  is_active: supplier.is_active ?? true,
-  created_at: supplier.created_at ?? nowIso(),
-  updated_at: supplier.created_at ?? nowIso(),
+  address: undefined,
+  gst_number: undefined,
+  is_active: true,
+  created_at: nowIso(),
+  updated_at: nowIso(),
   analytics: {
     total_orders: 0,
     total_value: 0,
@@ -123,17 +124,17 @@ const mapListSupplier = (supplier: RawSupplierListItem): Supplier => ({
 });
 
 const mapDetailSupplier = (supplier: RawSupplierDetail): Supplier => ({
-  supplier_id: String(supplier.supplier_id ?? ''),
+  supplier_id: String(supplier.id ?? ''),
   store_id: '',
   name: supplier.name ?? '',
-  contact_person: supplier.contact_person ?? '',
-  email: supplier.email ?? undefined,
-  phone: supplier.phone ?? undefined,
-  address: supplier.address ?? undefined,
-  gst_number: supplier.gst_number ?? undefined,
+  contact_person: supplier.contact?.name ?? '',
+  email: supplier.contact?.email ?? undefined,
+  phone: supplier.contact?.phone ?? undefined,
+  address: supplier.contact?.address ?? undefined,
+  gst_number: undefined,
   is_active: supplier.is_active ?? true,
-  created_at: supplier.created_at ?? nowIso(),
-  updated_at: supplier.created_at ?? nowIso(),
+  created_at: nowIso(),
+  updated_at: nowIso(),
   analytics: {
     total_orders: supplier.recent_purchase_orders?.length ?? 0,
     total_value: 0,
@@ -177,7 +178,7 @@ export const suppliersApi = {
   },
 
   createSupplier: async (data: CreateSupplierRequest): Promise<Supplier> => {
-    const response = await request<{ supplier_id?: number | string }>({
+    const response = await request<{ supplier_id?: number | string; id?: string }>({
       url: SUPPLIERS_BASE,
       method: 'POST',
       data: {
@@ -190,7 +191,7 @@ export const suppliersApi = {
       },
     });
 
-    return suppliersApi.getSupplier(String(response.supplier_id ?? ''));
+    return suppliersApi.getSupplier(String(response.supplier_id ?? response.id ?? ''));
   },
 
   updateSupplier: async (supplierId: string, data: UpdateSupplierRequest): Promise<Supplier> => {
@@ -256,11 +257,35 @@ export const suppliersApi = {
     };
   },
 
-  updateProductLink: async (_supplierId: string, _productId: string, _data: Partial<SupplierProduct>): Promise<SupplierProduct> =>
-    unsupportedApi('Updating supplier product links'),
+  updateProductLink: async (
+    supplierId: string,
+    productId: string,
+    data: Partial<SupplierProduct>,
+  ): Promise<SupplierProduct> => {
+    await request<{ id?: string }>({
+      url: `${SUPPLIERS_BASE}/${supplierId}/products/${productId}`,
+      method: 'PATCH',
+      data: {
+        ...(data.cost_price !== undefined ? { quoted_price: data.cost_price } : {}),
+        ...(data.lead_time_days !== undefined ? { lead_time_days: data.lead_time_days } : {}),
+        ...(data.is_active !== undefined ? { is_preferred_supplier: data.is_active } : {}),
+      },
+    });
 
-  removeProductLink: async (_supplierId: string, _productId: string): Promise<void> =>
-    unsupportedApi('Removing supplier product links'),
+    const products = await suppliersApi.getSupplierProducts(supplierId);
+    const updated = products.find((product) => product.product_id === productId);
+    if (!updated) {
+      throw new Error('Supplier product link not found after update.');
+    }
+    return updated;
+  },
+
+  removeProductLink: async (supplierId: string, productId: string): Promise<void> => {
+    await request<{ product_id: string; deleted: boolean }>({
+      url: `${SUPPLIERS_BASE}/${supplierId}/products/${productId}`,
+      method: 'DELETE',
+    });
+  },
 
   getSupplierAnalytics: async (supplierId: string): Promise<{
     total_orders: number;

@@ -38,6 +38,7 @@ export const useCreateApiKeyMutation = () => {
     mutationFn: (data: CreateApiKeyRequest) => developerApi.developerApi.createApiKey(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: developerKeys.apiKeys() });
+      queryClient.invalidateQueries({ queryKey: developerKeys.oauthApplications() });
     },
   });
 };
@@ -49,6 +50,7 @@ export const useDeleteApiKeyMutation = () => {
     mutationFn: (keyId: string) => developerApi.developerApi.deleteApiKey(keyId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: developerKeys.apiKeys() });
+      queryClient.invalidateQueries({ queryKey: developerKeys.oauthApplications() });
     },
   });
 };
@@ -60,6 +62,7 @@ export const useRegenerateApiKeyMutation = () => {
     mutationFn: (keyId: string) => developerApi.developerApi.regenerateApiKey(keyId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: developerKeys.apiKeys() });
+      queryClient.invalidateQueries({ queryKey: developerKeys.oauthApplications() });
     },
   });
 };
@@ -142,6 +145,7 @@ export const useCreateOAuthApplicationMutation = () => {
       developerApi.developerApi.createOAuthApplication(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: developerKeys.oauthApplications() });
+      queryClient.invalidateQueries({ queryKey: developerKeys.apiKeys() });
     },
   });
 };
@@ -154,6 +158,7 @@ export const useUpdateOAuthApplicationMutation = () => {
       developerApi.developerApi.updateOAuthApplication(clientId, data),
     onSuccess: (_, { clientId: _clientId }) => {
       queryClient.invalidateQueries({ queryKey: developerKeys.oauthApplications() });
+      queryClient.invalidateQueries({ queryKey: developerKeys.apiKeys() });
     },
   });
 };
@@ -165,6 +170,7 @@ export const useDeleteOAuthApplicationMutation = () => {
     mutationFn: (clientId: string) => developerApi.developerApi.deleteOAuthApplication(clientId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: developerKeys.oauthApplications() });
+      queryClient.invalidateQueries({ queryKey: developerKeys.apiKeys() });
     },
   });
 };
@@ -176,6 +182,7 @@ export const useRegenerateClientSecretMutation = () => {
     mutationFn: (clientId: string) => developerApi.developerApi.regenerateClientSecret(clientId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: developerKeys.oauthApplications() });
+      queryClient.invalidateQueries({ queryKey: developerKeys.apiKeys() });
     },
   });
 };

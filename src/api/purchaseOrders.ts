@@ -2,7 +2,7 @@
  * src/api/purchaseOrders.ts
  * Backend-aligned purchase order adapters
  */
-import { request, unsupportedApi } from './client';
+import { request } from './client';
 
 const PURCHASE_ORDERS_BASE = '/api/v1/purchase-orders';
 
@@ -318,8 +318,23 @@ export const purchaseOrdersApi = {
     return purchaseOrdersApi.getPurchaseOrder(String(response.id ?? ''));
   },
 
-  updatePurchaseOrder: async (_purchaseOrderId: string, _data: UpdatePurchaseOrderRequest): Promise<PurchaseOrder> =>
-    unsupportedApi('Updating draft purchase orders'),
+  updatePurchaseOrder: async (purchaseOrderId: string, data: UpdatePurchaseOrderRequest): Promise<PurchaseOrder> => {
+    await request<RawPurchaseOrderDetail>({
+      url: `${PURCHASE_ORDERS_BASE}/${purchaseOrderId}`,
+      method: 'PATCH',
+      data: {
+        expected_delivery_date: data.expected_delivery_date,
+        notes: data.notes,
+        items: data.line_items?.map((item) => ({
+          product_id: item.product_id,
+          ordered_qty: item.quantity,
+          unit_price: item.unit_price,
+        })),
+      },
+    });
+
+    return purchaseOrdersApi.getPurchaseOrder(purchaseOrderId);
+  },
 
   deletePurchaseOrder: async (purchaseOrderId: string): Promise<void> => {
     await request<{ id?: string }>({
@@ -336,7 +351,13 @@ export const purchaseOrdersApi = {
     return purchaseOrdersApi.getPurchaseOrder(purchaseOrderId);
   },
 
-  confirmPurchaseOrder: async (_purchaseOrderId: string): Promise<PurchaseOrder> => unsupportedApi('Confirming purchase orders'),
+  confirmPurchaseOrder: async (purchaseOrderId: string): Promise<PurchaseOrder> => {
+    await request<{ id?: string; status?: string }>({
+      url: `${PURCHASE_ORDERS_BASE}/${purchaseOrderId}/confirm`,
+      method: 'POST',
+    });
+    return purchaseOrdersApi.getPurchaseOrder(purchaseOrderId);
+  },
 
   receivePurchaseOrder: async (purchaseOrderId: string, data: ReceivePurchaseOrderRequest): Promise<PurchaseOrder> => {
     await request<{ id?: string; status?: string }>({
@@ -380,9 +401,16 @@ export const purchaseOrdersApi = {
     };
   },
 
-  generatePdf: async (_purchaseOrderId: string): Promise<{ url: string; job_id: string }> =>
-    unsupportedApi('Purchase order PDF generation'),
+  generatePdf: async (purchaseOrderId: string): Promise<{ url: string; job_id: string }> =>
+    request<{ url: string; job_id: string }>({
+      url: `${PURCHASE_ORDERS_BASE}/${purchaseOrderId}/pdf`,
+      method: 'GET',
+    }),
 
-  emailPurchaseOrder: async (_purchaseOrderId: string, _email: string): Promise<{ message: string }> =>
-    unsupportedApi('Purchase order email delivery'),
+  emailPurchaseOrder: async (purchaseOrderId: string, email: string): Promise<{ message: string }> =>
+    request<{ message: string }>({
+      url: `${PURCHASE_ORDERS_BASE}/${purchaseOrderId}/email`,
+      method: 'POST',
+      data: { email },
+    }),
 };

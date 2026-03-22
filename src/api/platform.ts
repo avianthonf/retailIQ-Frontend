@@ -29,6 +29,8 @@ export const getPlatformHealth = () => request<PlatformHealth>({ url: '/health',
 
 export const getPlatformRoot = () => request<PlatformRoot>({ url: '/', method: 'GET' });
 
+export const probeWebsocketEndpoint = () => request<string>({ url: '/ws', method: 'GET' });
+
 export async function getMaintenanceStatus() {
   const envelope = await requestEnvelope<PlatformMaintenance>({ url: '/api/v1/ops/maintenance', method: 'GET' });
   return envelope.data;

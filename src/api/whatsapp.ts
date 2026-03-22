@@ -2,7 +2,7 @@
  * src/api/whatsapp.ts
  * Backend-aligned WhatsApp adapters
  */
-import { request, unsupportedApi } from './client';
+import { request, requestEnvelope } from './client';
 
 const WHATSAPP_BASE = '/api/v1/whatsapp';
 
@@ -160,6 +160,21 @@ const mapMessageStatus = (status?: string): WhatsAppMessage['status'] => {
   }
 };
 
+const mapCampaignStatus = (status?: string): WhatsAppCampaign['status'] => {
+  switch (status) {
+    case 'SCHEDULED':
+      return 'SCHEDULED';
+    case 'SENDING':
+      return 'SENDING';
+    case 'COMPLETED':
+      return 'COMPLETED';
+    case 'FAILED':
+      return 'FAILED';
+    default:
+      return 'DRAFT';
+  }
+};
+
 export const whatsappApi = {
   getConfig: async (): Promise<WhatsAppConfig> => {
     const response = await request<{
@@ -217,7 +232,16 @@ export const whatsappApi = {
   },
 
   getTemplates: async (): Promise<WhatsAppTemplate[]> => {
-    const response = await request<Array<{ id?: string | number; name?: string; category?: string; language?: string; status?: string }>>({
+    const response = await request<Array<{
+      id?: string | number;
+      name?: string;
+      category?: string;
+      language?: string;
+      status?: string;
+      components?: WhatsAppTemplate['components'];
+      created_at?: string;
+      updated_at?: string;
+    }>>({
       url: `${WHATSAPP_BASE}/templates`,
       method: 'GET',
     });
@@ -229,21 +253,46 @@ export const whatsappApi = {
           category: template.category === 'MARKETING' || template.category === 'AUTHENTICATION' ? template.category : 'UTILITY',
           language: template.language ?? 'en',
           status: template.status === 'APPROVED' || template.status === 'REJECTED' ? template.status : 'PENDING',
-          components: [],
-          created_at: nowIso(),
-          updated_at: nowIso(),
+          components: Array.isArray(template.components) ? template.components : [],
+          created_at: template.created_at ?? nowIso(),
+          updated_at: template.updated_at ?? nowIso(),
         }))
       : [];
   },
 
-  createTemplate: async (_data: {
+  createTemplate: async (data: {
     name: string;
     category: 'MARKETING' | 'UTILITY' | 'AUTHENTICATION';
     language: string;
     components: WhatsAppTemplate['components'];
-  }): Promise<WhatsAppTemplate> => unsupportedApi('Creating WhatsApp templates'),
+  }): Promise<WhatsAppTemplate> => {
+    const response = await request<{
+      id?: string | number;
+      name?: string;
+      category?: string;
+      language?: string;
+      status?: string;
+      components?: WhatsAppTemplate['components'];
+      created_at?: string;
+      updated_at?: string;
+    }>({
+      url: `${WHATSAPP_BASE}/templates`,
+      method: 'POST',
+      data,
+    });
+    return {
+      id: String(response.id ?? ''),
+      name: response.name ?? data.name,
+      category: response.category === 'MARKETING' || response.category === 'AUTHENTICATION' ? response.category : 'UTILITY',
+      language: response.language ?? data.language,
+      status: response.status === 'APPROVED' || response.status === 'REJECTED' ? response.status : 'PENDING',
+      components: Array.isArray(response.components) ? response.components : data.components,
+      created_at: response.created_at ?? nowIso(),
+      updated_at: response.updated_at ?? nowIso(),
+    };
+  },
 
-  sendMessage: async (_data: {
+  sendMessage: async (data: {
     to: string;
     message_type: 'TEXT' | 'TEMPLATE' | 'IMAGE' | 'DOCUMENT';
     content: string;
@@ -252,9 +301,38 @@ export const whatsappApi = {
     template_variables?: Record<string, string>;
     media_url?: string;
     media_filename?: string;
-  }): Promise<WhatsAppMessage> => unsupportedApi('Sending arbitrary WhatsApp messages'),
+  }): Promise<WhatsAppMessage> => {
+    const response = await request<{
+      id?: string | number;
+      message_type?: string;
+      recipient?: string;
+      status?: string;
+      sent_at?: string;
+      template_name?: string;
+      content?: string;
+    }>({
+      url: `${WHATSAPP_BASE}/messages`,
+      method: 'POST',
+      data,
+    });
+    return {
+      id: String(response.id ?? ''),
+      to: String(response.recipient ?? data.to),
+      from: '',
+      message_type: data.message_type,
+      content: response.content ?? data.content,
+      template_name: response.template_name ?? data.template_name,
+      template_language: data.template_language,
+      template_variables: data.template_variables,
+      media_url: data.media_url,
+      media_filename: data.media_filename,
+      status: mapMessageStatus(response.status),
+      sent_at: response.sent_at ?? nowIso(),
+      created_at: response.sent_at ?? nowIso(),
+    };
+  },
 
-  sendBulkMessages: async (_messages: Array<{
+  sendBulkMessages: async (messages: Array<{
     to: string;
     message_type: 'TEXT' | 'TEMPLATE';
     content: string;
@@ -264,7 +342,37 @@ export const whatsappApi = {
   }>): Promise<{
     successful: WhatsAppMessage[];
     failed: { to: string; error: string }[];
-  }> => unsupportedApi('Bulk WhatsApp messaging'),
+  }> => {
+    const response = await request<{
+      successful?: Array<{ id?: string | number; message_type?: string; recipient?: string; status?: string; sent_at?: string }>;
+      failed?: Array<{ to?: string; error?: string }>;
+    }>({
+      url: `${WHATSAPP_BASE}/messages/bulk`,
+      method: 'POST',
+      data: { messages },
+    });
+
+    return {
+      successful: Array.isArray(response.successful)
+        ? response.successful.map((message) => ({
+            id: String(message.id ?? ''),
+            to: String(message.recipient ?? ''),
+            from: '',
+            message_type: message.message_type === 'template' ? 'TEMPLATE' : 'TEXT',
+            content: '',
+            status: mapMessageStatus(message.status),
+            sent_at: message.sent_at ?? nowIso(),
+            created_at: message.sent_at ?? nowIso(),
+          }))
+        : [],
+      failed: Array.isArray(response.failed)
+        ? response.failed.map((item) => ({
+            to: item.to ?? '',
+            error: item.error ?? 'Bulk message failed',
+          }))
+        : [],
+    };
+  },
 
   getMessages: async (params?: {
     to?: string;
@@ -276,40 +384,51 @@ export const whatsappApi = {
     page?: number;
     limit?: number;
   }): Promise<{ messages: WhatsAppMessage[]; total: number; page: number; pages: number }> => {
-    const response = await request<Array<{ id?: string | number; message_type?: string; recipient?: string; status?: string; sent_at?: string }>>({
+    const envelope = await requestEnvelope<Array<{
+      id?: string | number;
+      message_type?: string;
+      recipient?: string;
+      status?: string;
+      sent_at?: string;
+      template_name?: string;
+      content?: string;
+    }>>({
       url: `${WHATSAPP_BASE}/message-log`,
       method: 'GET',
       params,
     });
 
-    const messages: WhatsAppMessage[] = Array.isArray(response)
-      ? response
-          .map((message): WhatsAppMessage => ({
-            id: String(message.id ?? ''),
-            to: String(message.recipient ?? ''),
-            from: '',
-            message_type: message.message_type === 'purchase_order' ? 'DOCUMENT' : 'TEXT',
-            content: message.message_type === 'purchase_order' ? 'Purchase order message' : 'Alert message',
-            status: mapMessageStatus(message.status),
-            sent_at: message.sent_at ?? nowIso(),
-            created_at: message.sent_at ?? nowIso(),
-          }))
-          .filter((message) => {
-            if (params?.to && !message.to.includes(params.to)) {
-              return false;
-            }
-            if (params?.status && message.status !== params.status) {
-              return false;
-            }
-            return true;
-          })
-      : [];
+    const rows = Array.isArray(envelope.data) ? envelope.data : [];
+    const meta = envelope.meta ?? {};
+    const page = Number(meta.page ?? params?.page ?? 1);
+    const limit = Number(meta.limit ?? params?.limit ?? (rows.length || 1));
+    const messages: WhatsAppMessage[] = rows
+      .map((message): WhatsAppMessage => ({
+        id: String(message.id ?? ''),
+        to: String(message.recipient ?? ''),
+        from: '',
+        message_type: message.message_type === 'purchase_order' ? 'DOCUMENT' : message.message_type === 'campaign' ? 'TEMPLATE' : 'TEXT',
+        content: message.content ?? (message.message_type === 'purchase_order' ? 'Purchase order message' : 'Alert message'),
+        template_name: message.template_name,
+        status: mapMessageStatus(message.status),
+        sent_at: message.sent_at ?? nowIso(),
+        created_at: message.sent_at ?? nowIso(),
+      }))
+      .filter((message) => {
+        if (params?.to && !message.to.includes(params.to)) {
+          return false;
+        }
+        if (params?.status && message.status !== params.status) {
+          return false;
+        }
+        return true;
+      });
 
     return {
       messages,
-      total: messages.length,
-      page: params?.page ?? 1,
-      pages: messages.length ? 1 : 0,
+      total: Number(meta.total ?? messages.length),
+      page,
+      pages: limit > 0 ? Math.max(1, Math.ceil(Number(meta.total ?? messages.length) / limit)) : 1,
     };
   },
 
@@ -322,24 +441,160 @@ export const whatsappApi = {
     return message;
   },
 
-  getCampaigns: async (): Promise<WhatsAppCampaign[]> => [],
+  getCampaigns: async (): Promise<WhatsAppCampaign[]> => {
+    const response = await request<Array<{
+      id?: string;
+      name?: string;
+      description?: string;
+      template_id?: string;
+      template_name?: string;
+      recipient_count?: number;
+      sent_count?: number;
+      delivered_count?: number;
+      read_count?: number;
+      status?: string;
+      scheduled_at?: string;
+      sent_at?: string;
+      completed_at?: string;
+      created_at?: string;
+      updated_at?: string;
+    }>>({
+      url: `${WHATSAPP_BASE}/campaigns`,
+      method: 'GET',
+    });
+    return Array.isArray(response)
+      ? response.map((campaign) => ({
+          id: String(campaign.id ?? ''),
+          name: campaign.name ?? 'Campaign',
+          description: campaign.description ?? '',
+          template_id: String(campaign.template_id ?? ''),
+          template_name: campaign.template_name ?? '',
+          recipient_count: Number(campaign.recipient_count ?? 0),
+          sent_count: Number(campaign.sent_count ?? 0),
+          delivered_count: Number(campaign.delivered_count ?? 0),
+          read_count: Number(campaign.read_count ?? 0),
+          status: mapCampaignStatus(campaign.status),
+          scheduled_at: campaign.scheduled_at ?? undefined,
+          sent_at: campaign.sent_at ?? undefined,
+          completed_at: campaign.completed_at ?? undefined,
+          created_by: 'current_user',
+          created_at: campaign.created_at ?? nowIso(),
+          updated_at: campaign.updated_at ?? nowIso(),
+        }))
+      : [];
+  },
 
-  createCampaign: async (_data: {
+  createCampaign: async (data: {
     name: string;
     description: string;
     template_id: string;
     recipients: string[];
     scheduled_at?: string;
-  }): Promise<WhatsAppCampaign> => unsupportedApi('WhatsApp campaigns'),
+  }): Promise<WhatsAppCampaign> => {
+    const response = await request<{
+      id?: string;
+      name?: string;
+      description?: string;
+      template_id?: string;
+      template_name?: string;
+      recipient_count?: number;
+      sent_count?: number;
+      delivered_count?: number;
+      read_count?: number;
+      status?: string;
+      scheduled_at?: string;
+      sent_at?: string;
+      completed_at?: string;
+      created_at?: string;
+      updated_at?: string;
+    }>({
+      url: `${WHATSAPP_BASE}/campaigns`,
+      method: 'POST',
+      data,
+    });
+    return {
+      id: String(response.id ?? ''),
+      name: response.name ?? data.name,
+      description: response.description ?? data.description,
+      template_id: String(response.template_id ?? data.template_id),
+      template_name: response.template_name ?? '',
+      recipient_count: Number(response.recipient_count ?? data.recipients.length),
+      sent_count: Number(response.sent_count ?? 0),
+      delivered_count: Number(response.delivered_count ?? 0),
+      read_count: Number(response.read_count ?? 0),
+      status: mapCampaignStatus(response.status),
+      scheduled_at: response.scheduled_at ?? data.scheduled_at,
+      sent_at: response.sent_at ?? undefined,
+      completed_at: response.completed_at ?? undefined,
+      created_by: 'current_user',
+      created_at: response.created_at ?? nowIso(),
+      updated_at: response.updated_at ?? nowIso(),
+    };
+  },
 
-  getCampaign: async (_id: string): Promise<WhatsAppCampaign> => unsupportedApi('WhatsApp campaigns'),
+  getCampaign: async (id: string): Promise<WhatsAppCampaign> => {
+    const response = await request<{
+      id?: string;
+      name?: string;
+      description?: string;
+      template_id?: string;
+      template_name?: string;
+      recipient_count?: number;
+      sent_count?: number;
+      delivered_count?: number;
+      read_count?: number;
+      status?: string;
+      scheduled_at?: string;
+      sent_at?: string;
+      completed_at?: string;
+      created_at?: string;
+      updated_at?: string;
+    }>({
+      url: `${WHATSAPP_BASE}/campaigns/${id}`,
+      method: 'GET',
+    });
+    return {
+      id: String(response.id ?? id),
+      name: response.name ?? 'Campaign',
+      description: response.description ?? '',
+      template_id: String(response.template_id ?? ''),
+      template_name: response.template_name ?? '',
+      recipient_count: Number(response.recipient_count ?? 0),
+      sent_count: Number(response.sent_count ?? 0),
+      delivered_count: Number(response.delivered_count ?? 0),
+      read_count: Number(response.read_count ?? 0),
+      status: mapCampaignStatus(response.status),
+      scheduled_at: response.scheduled_at ?? undefined,
+      sent_at: response.sent_at ?? undefined,
+      completed_at: response.completed_at ?? undefined,
+      created_by: 'current_user',
+      created_at: response.created_at ?? nowIso(),
+      updated_at: response.updated_at ?? nowIso(),
+    };
+  },
 
-  updateCampaign: async (_id: string, _data: Partial<WhatsAppCampaign>): Promise<WhatsAppCampaign> =>
-    unsupportedApi('WhatsApp campaigns'),
+  updateCampaign: async (id: string, data: Partial<WhatsAppCampaign>): Promise<WhatsAppCampaign> => {
+    await request<unknown>({
+      url: `${WHATSAPP_BASE}/campaigns/${id}`,
+      method: 'PATCH',
+      data,
+    });
+    return whatsappApi.getCampaign(id);
+  },
 
-  deleteCampaign: async (_id: string): Promise<void> => unsupportedApi('WhatsApp campaigns'),
+  deleteCampaign: async (id: string): Promise<void> => {
+    await request<{ id: string; deleted: boolean }>({
+      url: `${WHATSAPP_BASE}/campaigns/${id}`,
+      method: 'DELETE',
+    });
+  },
 
-  sendCampaign: async (_id: string): Promise<void> => unsupportedApi('WhatsApp campaigns'),
+  sendCampaign: async (id: string): Promise<void> => {
+    await request<{ id: string; sent_count: number; status: string }>({
+      url: `${WHATSAPP_BASE}/campaigns/${id}/send`,
+      method: 'POST',
+    });
+  },
 
   getAnalytics: async (_params?: { from_date?: string; to_date?: string }): Promise<WhatsAppAnalytics> => {
     const { messages } = await whatsappApi.getMessages();
@@ -382,19 +637,54 @@ export const whatsappApi = {
     };
   },
 
-  optInCustomer: async (_phone: string): Promise<{ success: boolean; message: string }> =>
-    unsupportedApi('WhatsApp opt-in management'),
+  optInCustomer: async (phone: string): Promise<{ success: boolean; message: string }> =>
+    request<{ success: boolean; message: string }>({
+      url: `${WHATSAPP_BASE}/contacts/${phone}/opt-in`,
+      method: 'POST',
+    }),
 
-  optOutCustomer: async (_phone: string): Promise<{ success: boolean; message: string }> =>
-    unsupportedApi('WhatsApp opt-in management'),
+  optOutCustomer: async (phone: string): Promise<{ success: boolean; message: string }> =>
+    request<{ success: boolean; message: string }>({
+      url: `${WHATSAPP_BASE}/contacts/${phone}/opt-out`,
+      method: 'POST',
+    }),
 
-  getOptStatus: async (_phone: string): Promise<{ status: 'OPTED_IN' | 'OPTED_OUT'; opted_in_at?: string; opted_out_at?: string }> =>
-    unsupportedApi('WhatsApp opt-in management'),
+  getOptStatus: async (phone: string): Promise<{ status: 'OPTED_IN' | 'OPTED_OUT'; opted_in_at?: string; opted_out_at?: string }> =>
+    request<{ status: 'OPTED_IN' | 'OPTED_OUT'; opted_in_at?: string; opted_out_at?: string }>({
+      url: `${WHATSAPP_BASE}/contacts/${phone}/status`,
+      method: 'GET',
+    }),
 
-  sendTestMessage: async (_data: {
+  sendTestMessage: async (data: {
     to: string;
     template_name: string;
     template_language: string;
     template_variables?: Record<string, string>;
-  }): Promise<WhatsAppMessage> => unsupportedApi('Sending WhatsApp test messages'),
+  }): Promise<WhatsAppMessage> => {
+    const response = await request<{
+      id?: string | number;
+      message_type?: string;
+      recipient?: string;
+      status?: string;
+      sent_at?: string;
+      template_name?: string;
+    }>({
+      url: `${WHATSAPP_BASE}/messages/test`,
+      method: 'POST',
+      data,
+    });
+    return {
+      id: String(response.id ?? ''),
+      to: String(response.recipient ?? data.to),
+      from: '',
+      message_type: 'TEMPLATE',
+      content: `Test template ${data.template_name}`,
+      template_name: response.template_name ?? data.template_name,
+      template_language: data.template_language,
+      template_variables: data.template_variables,
+      status: mapMessageStatus(response.status),
+      sent_at: response.sent_at ?? nowIso(),
+      created_at: response.sent_at ?? nowIso(),
+    };
+  },
 };

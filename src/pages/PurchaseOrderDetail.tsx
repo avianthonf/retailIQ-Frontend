@@ -10,7 +10,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
-import { usePurchaseOrderQuery, useSendPurchaseOrderMutation, useReceivePurchaseOrderMutation, useCancelPurchaseOrderMutation } from '@/hooks/purchaseOrders';
+import {
+  usePurchaseOrderQuery,
+  useSendPurchaseOrderMutation,
+  useConfirmPurchaseOrderMutation,
+  useReceivePurchaseOrderMutation,
+  useCancelPurchaseOrderMutation,
+  useGeneratePdfMutation,
+  useEmailPurchaseOrderMutation,
+} from '@/hooks/purchaseOrders';
 import { useSuppliersQuery } from '@/hooks/suppliers';
 import type { BadgeProps } from '@/components/ui/Badge';
 import type { Supplier } from '@/api/suppliers';
@@ -22,6 +30,7 @@ import {
   getPurchaseOrderStatusText,
   canEditPurchaseOrder,
   canSendPurchaseOrder,
+  canConfirmPurchaseOrder,
   canReceivePurchaseOrder,
   canCancelPurchaseOrder
 } from '@/hooks/purchaseOrders';
@@ -39,8 +48,11 @@ export default function PurchaseOrderDetailPage() {
 
   // Mutations for status transitions
   const sendMutation = useSendPurchaseOrderMutation();
+  const confirmMutation = useConfirmPurchaseOrderMutation();
   const receiveMutation = useReceivePurchaseOrderMutation();
   const cancelMutation = useCancelPurchaseOrderMutation();
+  const generatePdfMutation = useGeneratePdfMutation();
+  const emailMutation = useEmailPurchaseOrderMutation();
 
   // Check permissions
   const _userRole = authStore.getState().user?.role?.toLowerCase();
@@ -75,6 +87,15 @@ export default function PurchaseOrderDetailPage() {
     }
   };
 
+  const handleConfirm = async () => {
+    try {
+      await confirmMutation.mutateAsync(purchaseOrderId);
+      alert('Purchase order confirmed');
+    } catch {
+      // Error handled by mutation
+    }
+  };
+
   const handleCancel = async () => {
     if (window.confirm('Are you sure you want to cancel this purchase order?')) {
       try {
@@ -83,6 +104,37 @@ export default function PurchaseOrderDetailPage() {
       } catch {
         // Error handled by mutation
       }
+    }
+  };
+
+  const resolveApiUrl = (path: string) => {
+    const baseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '');
+    if (!baseUrl) {
+      return path;
+    }
+    return new URL(path, `${baseUrl}/`).toString();
+  };
+
+  const handleDownloadPdf = async () => {
+    try {
+      const result = await generatePdfMutation.mutateAsync(purchaseOrderId);
+      window.open(resolveApiUrl(result.url), '_blank', 'noopener,noreferrer');
+    } catch {
+      // Error handled by mutation
+    }
+  };
+
+  const handleEmail = async () => {
+    const targetEmail = window.prompt('Enter the email address to send this purchase order to:', supplier?.email || '');
+    if (!targetEmail) {
+      return;
+    }
+
+    try {
+      await emailMutation.mutateAsync({ purchaseOrderId, email: targetEmail });
+      alert('Purchase order emailed successfully');
+    } catch {
+      // Error handled by mutation
     }
   };
 
@@ -131,12 +183,26 @@ export default function PurchaseOrderDetailPage() {
               Send to Supplier
             </Button>
           )}
+
+          {canConfirmPurchaseOrder(purchaseOrder.status) && (
+            <Button variant="secondary" onClick={handleConfirm} loading={confirmMutation.isPending}>
+              Confirm Order
+            </Button>
+          )}
           
           {canReceivePurchaseOrder(purchaseOrder.status) && (
             <Button variant="primary" onClick={handleReceive} loading={receiveMutation.isPending}>
               Mark as Received
             </Button>
           )}
+
+          <Button variant="secondary" onClick={handleDownloadPdf} loading={generatePdfMutation.isPending}>
+            Download PDF
+          </Button>
+
+          <Button variant="secondary" onClick={handleEmail} loading={emailMutation.isPending}>
+            Email Supplier
+          </Button>
           
           {canCancelPurchaseOrder(purchaseOrder.status) && (
             <Button variant="destructive" onClick={handleCancel} loading={cancelMutation.isPending}>

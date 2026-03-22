@@ -3,7 +3,7 @@
  * Backend-aligned GST adapters
  */
 import { normalizeApiError } from '@/utils/errors';
-import { request, unsupportedApi } from './client';
+import { request } from './client';
 import * as storeApi from './store';
 
 const GST_BASE = '/api/v1/gst';
@@ -172,6 +172,7 @@ interface RawGstSummary {
   total_cgst?: number;
   total_sgst?: number;
   total_igst?: number;
+  invoice_count?: number;
 }
 
 const currentPeriod = () => new Date().toISOString().slice(0, 7);
@@ -261,7 +262,7 @@ export const gstApi = {
 
       return {
         period,
-        status: 'READY',
+        status: response.acknowledgement_number ? 'FILED' : 'READY',
         filed_on: typeof response.filed_on === 'string' ? response.filed_on : undefined,
         acknowledgement_number: typeof response.acknowledgement_number === 'string' ? response.acknowledgement_number : undefined,
         b2b_invoices: [],
@@ -287,9 +288,25 @@ export const gstApi = {
     }
   },
 
-  generateGSTR1: async (period: string): Promise<GSTR1Return> => gstApi.getGSTR1(period),
+  generateGSTR1: async (period: string): Promise<GSTR1Return> => {
+    await request<RawGstSummary>({
+      url: `${GST_BASE}/summary`,
+      method: 'GET',
+      params: { period },
+    });
+    return gstApi.getGSTR1(period);
+  },
 
-  fileGSTR1: async (_period: string): Promise<{ acknowledgement_number: string }> => unsupportedApi('Filing GSTR-1'),
+  fileGSTR1: async (period: string): Promise<{ acknowledgement_number: string }> => {
+    const response = await request<{ acknowledgement_number?: string }>({
+      url: `${GST_BASE}/gstr1/file`,
+      method: 'POST',
+      data: { period },
+    });
+    return {
+      acknowledgement_number: String(response.acknowledgement_number ?? ''),
+    };
+  },
 
   searchHSN: async (query: string): Promise<HSNSearchResult[]> => {
     const response = await request<Array<{ hsn_code?: string; description?: string; default_gst_rate?: number | null }>>({
@@ -329,7 +346,10 @@ export const gstApi = {
   },
 
   getTaxConfig: async (): Promise<TaxConfig> => {
-    const categories = await getTaxCategoriesInternal();
+    const [categories, hsnMappings] = await Promise.all([
+      getTaxCategoriesInternal(),
+      gstApi.getHSNMappings(),
+    ]);
     return {
       tax_rates: {
         cgst: 0,
@@ -338,7 +358,7 @@ export const gstApi = {
         cess: 0,
       },
       tax_categories: categories,
-      hsn_mappings: [],
+      hsn_mappings: hsnMappings,
     };
   },
 
@@ -412,13 +432,69 @@ export const gstApi = {
     await storeApi.deleteCategory(id);
   },
 
-  getHSNMappings: async (): Promise<HSNMapping[]> => [],
+  getHSNMappings: async (): Promise<HSNMapping[]> => {
+    const response = await request<Array<{
+      hsn_code?: string;
+      category_id?: string;
+      tax_rate?: number;
+      description?: string;
+    }>>({
+      url: `${GST_BASE}/hsn-mappings`,
+      method: 'GET',
+    });
 
-  createHSNMapping: async (_data: Omit<HSNMapping, 'hsn_code'> & { hsn_code: string }): Promise<HSNMapping> =>
-    unsupportedApi('HSN mapping management'),
+    return Array.isArray(response)
+      ? response.map((mapping) => ({
+          hsn_code: String(mapping.hsn_code ?? ''),
+          category_id: String(mapping.category_id ?? ''),
+          tax_rate: Number(mapping.tax_rate ?? 0),
+          description: mapping.description ?? '',
+        }))
+      : [];
+  },
 
-  updateHSNMapping: async (_hsn_code: string, _data: Partial<HSNMapping>): Promise<HSNMapping> =>
-    unsupportedApi('HSN mapping management'),
+  createHSNMapping: async (data: Omit<HSNMapping, 'hsn_code'> & { hsn_code: string }): Promise<HSNMapping> => {
+    const response = await request<{
+      hsn_code?: string;
+      category_id?: string;
+      tax_rate?: number;
+      description?: string;
+    }>({
+      url: `${GST_BASE}/hsn-mappings`,
+      method: 'POST',
+      data,
+    });
+    return {
+      hsn_code: String(response.hsn_code ?? data.hsn_code),
+      category_id: String(response.category_id ?? data.category_id),
+      tax_rate: Number(response.tax_rate ?? data.tax_rate),
+      description: response.description ?? data.description,
+    };
+  },
 
-  deleteHSNMapping: async (_hsn_code: string): Promise<void> => unsupportedApi('HSN mapping management'),
+  updateHSNMapping: async (hsn_code: string, data: Partial<HSNMapping>): Promise<HSNMapping> => {
+    const response = await request<{
+      hsn_code?: string;
+      category_id?: string;
+      tax_rate?: number;
+      description?: string;
+    }>({
+      url: `${GST_BASE}/hsn-mappings/${hsn_code}`,
+      method: 'PATCH',
+      data,
+    });
+    return {
+      hsn_code: String(response.hsn_code ?? hsn_code),
+      category_id: String(response.category_id ?? data.category_id ?? ''),
+      tax_rate: Number(response.tax_rate ?? data.tax_rate ?? 0),
+      description: response.description ?? data.description ?? '',
+    };
+  },
+
+  deleteHSNMapping: async (hsn_code: string): Promise<void> => {
+    await request<{ hsn_code: string; deleted: boolean }>({
+      url: `${GST_BASE}/hsn-mappings/${hsn_code}`,
+      method: 'DELETE',
+    });
+  },
 };

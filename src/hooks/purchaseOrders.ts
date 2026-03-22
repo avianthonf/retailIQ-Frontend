@@ -209,7 +209,7 @@ export const getPurchaseOrderStatusText = (status: PurchaseOrderStatus): string 
 };
 
 export const canEditPurchaseOrder = (_status: PurchaseOrderStatus): boolean => {
-  return false;
+  return _status === 'DRAFT';
 };
 
 export const canDeletePurchaseOrder = (status: PurchaseOrderStatus): boolean => {
@@ -221,7 +221,7 @@ export const canSendPurchaseOrder = (status: PurchaseOrderStatus): boolean => {
 };
 
 export const canConfirmPurchaseOrder = (_status: PurchaseOrderStatus): boolean => {
-  return false;
+  return _status === 'SENT';
 };
 
 export const canReceivePurchaseOrder = (status: PurchaseOrderStatus): boolean => {

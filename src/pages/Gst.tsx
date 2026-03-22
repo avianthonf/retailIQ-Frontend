@@ -30,7 +30,6 @@ import {
   useDeleteHSNMappingMutation
 } from '@/hooks/gst';
 import { authStore } from '@/stores/authStore';
-import { backendCapabilities } from '@/config/backendCapabilities';
 import type { Column } from '@/components/ui/DataTable';
 import type { TaxCategory, HSNMapping, GSTR1Invoice as _GSTR1Invoice } from '@/api/gst';
 import { formatCurrency } from '@/utils/numbers';
@@ -63,13 +62,7 @@ export default function GstPage() {
   // Check if user is owner
   const user = authStore.getState().user;
   const isOwner = user?.role === 'owner';
-  const tabs = ([
-    'overview',
-    'config',
-    'returns',
-    'tax-categories',
-    ...(backendCapabilities.gst.hsnMappings ? (['hsn-mappings'] as const) : []),
-  ] as const);
+  const tabs = (['overview', 'config', 'returns', 'tax-categories', 'hsn-mappings'] as const);
 
   // Queries (must be before any conditional return per React hooks rules)
   const { data: gstConfig, isLoading: configLoading, error: configError } = useGSTConfigQuery();
@@ -449,19 +442,13 @@ export default function GstPage() {
                         </Button>
                       )}
                       {gstr1.status === 'READY' && (
-                        backendCapabilities.gst.filing ? (
-                          <Button
-                            variant="primary"
-                            onClick={handleFileGSTR1}
-                            loading={fileGSTR1Mutation.isPending}
-                          >
-                            File GSTR-1
-                          </Button>
-                        ) : (
-                          <p className="text-sm text-gray-500">
-                            Filing from the frontend is not available in this backend deployment.
-                          </p>
-                        )
+                        <Button
+                          variant="primary"
+                          onClick={handleFileGSTR1}
+                          loading={fileGSTR1Mutation.isPending}
+                        >
+                          File GSTR-1
+                        </Button>
                       )}
                     </>
                   )}
@@ -541,20 +528,13 @@ export default function GstPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle>HSN Mappings</CardTitle>
-              {backendCapabilities.gst.hsnMappings && (
-                <Button variant="primary" onClick={() => setShowAddMapping(true)}>
-                  Add Mapping
-                </Button>
-              )}
+              <Button variant="primary" onClick={() => setShowAddMapping(true)}>
+                Add Mapping
+              </Button>
             </div>
           </CardHeader>
           <CardContent>
-            {!backendCapabilities.gst.hsnMappings ? (
-              <EmptyState
-                title="HSN Mapping Management Not Available"
-                body="The deployed backend does not expose HSN mapping management endpoints."
-              />
-            ) : mappingsLoading ? (
+            {mappingsLoading ? (
               <SkeletonLoader width="100%" height="400px" variant="rect" />
             ) : mappings && mappings.length > 0 ? (
               <DataTable
@@ -638,7 +618,7 @@ export default function GstPage() {
       )}
 
       {/* Add HSN Mapping Button - Simplified */}
-      {backendCapabilities.gst.hsnMappings && showAddMapping && (
+      {showAddMapping && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg max-w-md w-full">
             <h2 className="text-lg font-bold mb-4">Add HSN Mapping</h2>

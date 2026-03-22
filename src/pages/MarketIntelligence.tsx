@@ -2,34 +2,70 @@ import { useMemo, useState } from 'react';
 import { PageFrame } from '@/components/layout/PageFrame';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+import { Badge } from '@/components/ui/Badge';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { Input } from '@/components/ui/Input';
 import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
-import { useAcknowledgeAlertMutation, useComputePriceIndexMutation, useMarketAlertsQuery, useMarketSummaryQuery, usePriceIndicesQuery, usePriceSignalsQuery } from '@/hooks/marketIntelligence';
+import {
+  useAcknowledgeAlertMutation,
+  useCompetitorDetailQuery,
+  useCompetitorsQuery,
+  useComputePriceIndexMutation,
+  useDemandForecastsQuery,
+  useGenerateForecastMutation,
+  useMarketAlertsQuery,
+  useMarketSummaryQuery,
+  usePriceIndicesQuery,
+  usePriceSignalsQuery,
+  useRecommendationsQuery,
+} from '@/hooks/marketIntelligence';
 import { uiStore } from '@/stores/uiStore';
+import { formatDate } from '@/utils/dates';
 import { normalizeApiError } from '@/utils/errors';
 import { formatCurrency } from '@/utils/numbers';
-import type { MarketAlert, PriceIndex, PriceSignal } from '@/api/marketIntelligence';
+import type { CompetitorAnalysis, DemandForecast, MarketAlert, MarketRecommendation, PriceIndex, PriceSignal } from '@/api/marketIntelligence';
 
 export default function MarketIntelligencePage() {
   const addToast = uiStore((state) => state.addToast);
-  const [activeTab, setActiveTab] = useState<'overview' | 'signals' | 'indices' | 'alerts'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'signals' | 'indices' | 'alerts' | 'competitors' | 'forecasts' | 'recommendations'>('overview');
   const [summaryRegion, setSummaryRegion] = useState('');
   const [signalProductId, setSignalProductId] = useState('');
   const [indexCategory, setIndexCategory] = useState('');
   const [indexRegion, setIndexRegion] = useState('');
   const [indexPeriod, setIndexPeriod] = useState('');
   const [indexProductIds, setIndexProductIds] = useState('');
+  const [competitorRegion, setCompetitorRegion] = useState('');
+  const [selectedCompetitorId, setSelectedCompetitorId] = useState('');
+  const [forecastProductId, setForecastProductId] = useState('');
+  const [forecastPeriod, setForecastPeriod] = useState('next_30_days');
+  const [forecastCategory, setForecastCategory] = useState('');
+  const [forecastRegion, setForecastRegion] = useState('');
+  const [recommendationType, setRecommendationType] = useState<'PRICING' | 'STOCK' | 'MARKETING' | ''>('');
+  const [recommendationCategory, setRecommendationCategory] = useState('');
+  const [recommendationRegion, setRecommendationRegion] = useState('');
 
   const summaryQuery = useMarketSummaryQuery(summaryRegion || undefined);
   const signalsQuery = usePriceSignalsQuery(signalProductId ? { product_id: signalProductId } : undefined);
   const indicesQuery = usePriceIndicesQuery();
   const alertsQuery = useMarketAlertsQuery();
+  const competitorsQuery = useCompetitorsQuery(competitorRegion || undefined);
+  const competitorDetailQuery = useCompetitorDetailQuery(selectedCompetitorId);
+  const forecastsQuery = useDemandForecastsQuery({
+    product_id: forecastProductId || undefined,
+    category: forecastCategory || undefined,
+    region: forecastRegion || undefined,
+  });
+  const recommendationsQuery = useRecommendationsQuery({
+    type: recommendationType || undefined,
+    region: recommendationRegion || undefined,
+    category: recommendationCategory || undefined,
+  });
 
   const acknowledgeAlertMutation = useAcknowledgeAlertMutation();
   const computeIndexMutation = useComputePriceIndexMutation();
+  const generateForecastMutation = useGenerateForecastMutation();
 
   const signalColumns = useMemo<Column<PriceSignal>[]>(
     () => [
@@ -86,6 +122,50 @@ export default function MarketIntelligencePage() {
     [acknowledgeAlertMutation, addToast],
   );
 
+  const competitorColumns = useMemo<Column<CompetitorAnalysis>[]>(
+    () => [
+      { key: 'name', header: 'Competitor', render: (row) => row.name },
+      { key: 'region', header: 'Region', render: (row) => row.region },
+      { key: 'total_products', header: 'Products', render: (row) => row.total_products.toLocaleString() },
+      { key: 'average_pricing', header: 'Average Price', render: (row) => formatCurrency(row.average_pricing) },
+      { key: 'pricing_strategy', header: 'Strategy', render: (row) => row.pricing_strategy },
+      {
+        key: 'actions',
+        header: 'Actions',
+        render: (row) => (
+          <Button size="sm" variant="secondary" onClick={() => setSelectedCompetitorId(row.competitor_id)}>
+            View detail
+          </Button>
+        ),
+      },
+    ],
+    [],
+  );
+
+  const forecastColumns = useMemo<Column<DemandForecast>[]>(
+    () => [
+      { key: 'product_name', header: 'Product', render: (row) => row.product_name },
+      { key: 'sku', header: 'SKU', render: (row) => row.sku },
+      { key: 'current_demand', header: 'Current', render: (row) => row.current_demand.toFixed(2) },
+      { key: 'forecast_demand', header: 'Forecast', render: (row) => row.forecast_demand.toFixed(2) },
+      { key: 'forecast_period', header: 'Period', render: (row) => row.forecast_period },
+      { key: 'confidence_score', header: 'Confidence', render: (row) => `${Math.round(row.confidence_score * 100)}%` },
+    ],
+    [],
+  );
+
+  const recommendationColumns = useMemo<Column<MarketRecommendation>[]>(
+    () => [
+      { key: 'title', header: 'Title', render: (row) => row.title },
+      { key: 'type', header: 'Type', render: (row) => row.type },
+      { key: 'priority', header: 'Priority', render: (row) => row.priority },
+      { key: 'expected_impact', header: 'Impact', render: (row) => row.expected_impact },
+      { key: 'status', header: 'Status', render: (row) => row.status },
+      { key: 'due_date', header: 'Due', render: (row) => row.due_date ? formatDate(row.due_date) : '-' },
+    ],
+    [],
+  );
+
   const onComputeIndex = async () => {
     if (!indexCategory.trim() || !indexRegion.trim() || !indexPeriod.trim()) {
       addToast({ title: 'Missing inputs', message: 'Category, region, and period are required to compute an index.', variant: 'warning' });
@@ -130,13 +210,16 @@ export default function MarketIntelligencePage() {
   const alerts = alertsQuery.data?.alerts ?? [];
   const signals = signalsQuery.data?.signals ?? [];
   const indices = indicesQuery.data ?? [];
+  const competitors = competitorsQuery.data ?? [];
+  const forecasts = forecastsQuery.data ?? [];
+  const recommendations = recommendationsQuery.data ?? [];
 
   return (
     <PageFrame title="Market Intelligence" subtitle="Live market summaries, price signals, price index computation, and alert operations backed by the production API.">
       <div className="space-y-6">
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex gap-6">
-            {(['overview', 'signals', 'indices', 'alerts'] as const).map((tab) => (
+            {(['overview', 'signals', 'indices', 'alerts', 'competitors', 'forecasts', 'recommendations'] as const).map((tab) => (
               <button
                 key={tab}
                 type="button"
@@ -293,6 +376,179 @@ export default function MarketIntelligencePage() {
               </CardContent>
             </Card>
           )
+        ) : null}
+
+        {activeTab === 'competitors' ? (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Competitor Filter</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+                <Input
+                  label="Region"
+                  value={competitorRegion}
+                  onChange={(event) => setCompetitorRegion(event.target.value)}
+                  placeholder="Optional region filter"
+                />
+                <Button variant="secondary" onClick={() => void competitorsQuery.refetch()}>
+                  Refresh competitors
+                </Button>
+              </CardContent>
+            </Card>
+
+            {competitorsQuery.isLoading ? (
+              <SkeletonLoader variant="rect" height={260} />
+            ) : competitorsQuery.isError ? (
+              <ErrorState error={normalizeApiError(competitorsQuery.error)} onRetry={() => void competitorsQuery.refetch()} />
+            ) : (
+              <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Competitor Analysis</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <DataTable columns={competitorColumns} data={competitors} emptyMessage="No competitor analysis returned by the backend." />
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Competitor Detail</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {selectedCompetitorId && competitorDetailQuery.isLoading ? (
+                      <SkeletonLoader variant="rect" height={160} />
+                    ) : selectedCompetitorId && competitorDetailQuery.isError ? (
+                      <ErrorState error={normalizeApiError(competitorDetailQuery.error)} onRetry={() => void competitorDetailQuery.refetch()} />
+                    ) : competitorDetailQuery.data ? (
+                      <div className="space-y-3 text-sm">
+                        <div><span className="text-gray-500">Name:</span> {competitorDetailQuery.data.name}</div>
+                        <div><span className="text-gray-500">Region:</span> {competitorDetailQuery.data.region}</div>
+                        <div><span className="text-gray-500">Strategy:</span> {competitorDetailQuery.data.pricing_strategy}</div>
+                        <div><span className="text-gray-500">Market share:</span> {competitorDetailQuery.data.market_share.toFixed(2)}%</div>
+                        <div>
+                          <div className="text-gray-500 mb-1">Strengths</div>
+                          <div className="flex flex-wrap gap-2">
+                            {competitorDetailQuery.data.strengths.map((strength) => (
+                              <Badge key={strength} variant="success">{strength}</Badge>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-gray-500 mb-1">Weaknesses</div>
+                          <div className="flex flex-wrap gap-2">
+                            {competitorDetailQuery.data.weaknesses.length ? competitorDetailQuery.data.weaknesses.map((weakness) => (
+                              <Badge key={weakness} variant="warning">{weakness}</Badge>
+                            )) : <span className="text-gray-500">None</span>}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <EmptyState title="No competitor selected" body="Choose a competitor from the table to inspect its breakdown." />
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        {activeTab === 'forecasts' ? (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Forecast Inputs</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-4 md:grid-cols-2">
+                <Input label="Product ID" value={forecastProductId} onChange={(event) => setForecastProductId(event.target.value)} placeholder="Optional product ID" />
+                <Input label="Forecast period" value={forecastPeriod} onChange={(event) => setForecastPeriod(event.target.value)} placeholder="next_30_days" />
+                <Input label="Category" value={forecastCategory} onChange={(event) => setForecastCategory(event.target.value)} placeholder="Optional category" />
+                <Input label="Region" value={forecastRegion} onChange={(event) => setForecastRegion(event.target.value)} placeholder="Optional region" />
+                <div className="md:col-span-2">
+                  <Button
+                    onClick={() => void (async () => {
+                      if (!forecastProductId.trim()) {
+                        addToast({ title: 'Missing product ID', message: 'Enter a product ID before generating a forecast.', variant: 'warning' });
+                        return;
+                      }
+
+                      try {
+                        await generateForecastMutation.mutateAsync({
+                          product_id: forecastProductId.trim(),
+                          forecast_period: forecastPeriod.trim() || 'next_30_days',
+                        });
+                        addToast({ title: 'Forecast generated', message: 'The backend returned a fresh demand forecast.', variant: 'success' });
+                        await forecastsQuery.refetch();
+                      } catch (error) {
+                        addToast({ title: 'Forecast generation failed', message: normalizeApiError(error).message, variant: 'error' });
+                      }
+                    })()}
+                    loading={generateForecastMutation.isPending}
+                  >
+                    Generate forecast
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {forecastsQuery.isLoading ? (
+              <SkeletonLoader variant="rect" height={260} />
+            ) : forecastsQuery.isError ? (
+              <ErrorState error={normalizeApiError(forecastsQuery.error)} onRetry={() => void forecastsQuery.refetch()} />
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Demand Forecasts</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <DataTable columns={forecastColumns} data={forecasts} emptyMessage="No forecast rows returned by the backend." />
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        ) : null}
+
+        {activeTab === 'recommendations' ? (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Recommendation Filters</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-4 md:grid-cols-3">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Type</label>
+                  <select
+                    value={recommendationType}
+                    onChange={(event) => setRecommendationType(event.target.value as typeof recommendationType)}
+                    className="h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm"
+                  >
+                    <option value="">All</option>
+                    <option value="PRICING">Pricing</option>
+                    <option value="STOCK">Stock</option>
+                    <option value="MARKETING">Marketing</option>
+                  </select>
+                </div>
+                <Input label="Category" value={recommendationCategory} onChange={(event) => setRecommendationCategory(event.target.value)} placeholder="Optional category filter" />
+                <Input label="Region" value={recommendationRegion} onChange={(event) => setRecommendationRegion(event.target.value)} placeholder="Optional region filter" />
+              </CardContent>
+            </Card>
+
+            {recommendationsQuery.isLoading ? (
+              <SkeletonLoader variant="rect" height={260} />
+            ) : recommendationsQuery.isError ? (
+              <ErrorState error={normalizeApiError(recommendationsQuery.error)} onRetry={() => void recommendationsQuery.refetch()} />
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Action Recommendations</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <DataTable columns={recommendationColumns} data={recommendations} emptyMessage="No recommendations returned by the backend." />
+                </CardContent>
+              </Card>
+            )}
+          </div>
         ) : null}
       </div>
     </PageFrame>

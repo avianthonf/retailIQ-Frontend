@@ -13,7 +13,7 @@ import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
-import { 
+import {
   useLoyaltyProgramQuery,
   useLoyaltyAccountsQuery,
   useLoyaltyAnalyticsQuery,
@@ -28,7 +28,6 @@ import {
   useUpdateCustomerTierMutation
 } from '@/hooks/loyalty';
 import { authStore } from '@/stores/authStore';
-import { backendCapabilities } from '@/config/backendCapabilities';
 import type { Column } from '@/components/ui/DataTable';
 import type { LoyaltyAccount, LoyaltyTier, LoyaltyTransaction as _LoyaltyTransaction } from '@/api/loyalty';
 import { formatCurrency } from '@/utils/numbers';
@@ -45,6 +44,7 @@ export default function LoyaltyPage() {
   const [showEnrollDialog, setShowEnrollDialog] = useState(false);
   const [showTierDialog, setShowTierDialog] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [editingTierId, setEditingTierId] = useState<string | null>(null);
 
   // Form states
   const [redeemForm, setRedeemForm] = useState({
@@ -83,7 +83,7 @@ export default function LoyaltyPage() {
   // Mutations
   const _updateProgramMutation = useUpdateLoyaltyProgramMutation();
   const createTierMutation = useCreateTierMutation();
-  const _updateTierMutation = useUpdateTierMutation();
+  const updateTierMutation = useUpdateTierMutation();
   const deleteTierMutation = useDeleteTierMutation();
   const redeemMutation = useRedeemPointsMutation();
   const adjustMutation = useAdjustPointsMutation();
@@ -141,11 +141,20 @@ export default function LoyaltyPage() {
 
   const handleCreateTier = async () => {
     try {
-      await createTierMutation.mutateAsync({
+      const payload = {
         ...tierForm,
-        benefits: tierForm.benefits.split(',').map(b => b.trim()).filter(Boolean),
-      });
+        benefits: tierForm.benefits.split(',').map((benefit) => benefit.trim()).filter(Boolean),
+      };
+      if (editingTierId) {
+        await updateTierMutation.mutateAsync({
+          id: editingTierId,
+          data: payload,
+        });
+      } else {
+        await createTierMutation.mutateAsync(payload);
+      }
       setShowTierDialog(false);
+      setEditingTierId(null);
       setTierForm({
         name: '',
         description: '',
@@ -154,7 +163,7 @@ export default function LoyaltyPage() {
         benefits: '',
         multiplier: 1,
       });
-      alert('Tier created successfully');
+      alert(editingTierId ? 'Tier updated successfully' : 'Tier created successfully');
     } catch {
       // Error handled by mutation
     }
@@ -221,18 +230,16 @@ export default function LoyaltyPage() {
           >
             Redeem
           </Button>
-          {backendCapabilities.loyalty.manualAdjustments && (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                setAdjustForm({ ...adjustForm, customer_id: account.customer_id });
-                setShowAdjustDialog(true);
-              }}
-            >
-              Adjust
-            </Button>
-          )}
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              setAdjustForm({ ...adjustForm, customer_id: account.customer_id });
+              setShowAdjustDialog(true);
+            }}
+          >
+            Adjust
+          </Button>
         </div>
       ),
     },
@@ -283,36 +290,31 @@ export default function LoyaltyPage() {
       header: 'Actions',
       render: (tier) => (
         <div className="flex space-x-2">
-          {backendCapabilities.loyalty.tierManagement ? (
-            <>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  setTierForm({
-                    name: tier.name,
-                    description: tier.description,
-                    min_points: tier.min_points,
-                    max_points: tier.max_points,
-                    benefits: tier.benefits.join(', '),
-                    multiplier: tier.multiplier,
-                  });
-                  setShowTierDialog(true);
-                }}
-              >
-                Edit
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => setDeleteTarget(tier.id)}
-              >
-                Delete
-              </Button>
-            </>
-          ) : (
-            <span className="text-sm text-gray-500">Read only</span>
-          )}
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              setEditingTierId(tier.id);
+              setTierForm({
+                name: tier.name,
+                description: tier.description,
+                min_points: tier.min_points,
+                max_points: tier.max_points,
+                benefits: tier.benefits.join(', '),
+                multiplier: tier.multiplier,
+              });
+              setShowTierDialog(true);
+            }}
+          >
+            Edit
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => setDeleteTarget(tier.id)}
+          >
+            Delete
+          </Button>
         </div>
       ),
     },
@@ -502,14 +504,6 @@ export default function LoyaltyPage() {
       {/* Customers Tab */}
       {activeTab === 'customers' && (
         <div className="space-y-6">
-          {(!backendCapabilities.loyalty.enrollment || !backendCapabilities.loyalty.manualAdjustments) && (
-            <Card>
-              <CardContent className="py-4 text-sm text-gray-600">
-                Enrollment and manual point adjustments are not available in the current backend deployment. Customer
-                redemption remains fully supported.
-              </CardContent>
-            </Card>
-          )}
           <div className="flex items-center justify-between">
             <Input
               placeholder="Search customers..."
@@ -517,7 +511,7 @@ export default function LoyaltyPage() {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="max-w-sm"
             />
-            {canManage && backendCapabilities.loyalty.enrollment && (
+            {canManage && (
               <Button variant="primary" onClick={() => setShowEnrollDialog(true)}>
                 Enroll Customer
               </Button>
@@ -608,19 +602,26 @@ export default function LoyaltyPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle>Loyalty Tiers</CardTitle>
-              {backendCapabilities.loyalty.tierManagement && (
-                <Button variant="primary" onClick={() => setShowTierDialog(true)}>
-                  Add Tier
-                </Button>
-              )}
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setEditingTierId(null);
+                  setTierForm({
+                    name: '',
+                    description: '',
+                    min_points: 0,
+                    max_points: undefined,
+                    benefits: '',
+                    multiplier: 1,
+                  });
+                  setShowTierDialog(true);
+                }}
+              >
+                Add Tier
+              </Button>
             </div>
           </CardHeader>
           <CardContent>
-            {!backendCapabilities.loyalty.tierManagement && (
-              <p className="mb-4 text-sm text-gray-600">
-                The backend currently exposes tiers as read-only loyalty metadata.
-              </p>
-            )}
             {program.tiers.length > 0 ? (
               <DataTable
                 columns={tierColumns}
@@ -636,69 +637,180 @@ export default function LoyaltyPage() {
         </Card>
       )}
 
-      {/* Redeem Points Dialog */}
-      <ConfirmDialog
-        open={showRedeemDialog}
-        title="Redeem Points"
-        body={`Customer: ${selectedCustomer?.customer_name}\nAvailable Points: ${selectedCustomer?.current_points.toLocaleString()}`}
-        confirmLabel={redeemMutation.isPending ? 'Redeeming...' : 'Redeem'}
-        onConfirm={handleRedeemPoints}
-        onCancel={() => {
-          setShowRedeemDialog(false);
-          setRedeemForm({ points: '', description: '' });
-          setSelectedCustomer(null);
-        }}
-      />
+      {showRedeemDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg max-w-md w-full space-y-4">
+            <h2 className="text-lg font-bold">Redeem Points</h2>
+            <p className="text-sm text-gray-600">
+              Customer: {selectedCustomer?.customer_name} · Available:{' '}
+              {selectedCustomer?.current_points.toLocaleString() ?? 0}
+            </p>
+            <Input
+              label="Points"
+              type="number"
+              value={redeemForm.points}
+              onChange={(event) => setRedeemForm((current) => ({ ...current, points: event.target.value }))}
+            />
+            <Input
+              label="Description"
+              value={redeemForm.description}
+              onChange={(event) => setRedeemForm((current) => ({ ...current, description: event.target.value }))}
+            />
+            <div className="flex justify-end space-x-2">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setShowRedeemDialog(false);
+                  setRedeemForm({ points: '', description: '' });
+                  setSelectedCustomer(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleRedeemPoints} loading={redeemMutation.isPending}>
+                Redeem
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
-      {/* Adjust Points Dialog */}
-      <ConfirmDialog
-        open={backendCapabilities.loyalty.manualAdjustments && showAdjustDialog}
-        title="Adjust Points"
-        body="Enter the points to adjust (positive to add, negative to subtract)"
-        confirmLabel={adjustMutation.isPending ? 'Adjusting...' : 'Adjust'}
-        onConfirm={handleAdjustPoints}
-        onCancel={() => {
-          setShowAdjustDialog(false);
-          setAdjustForm({ customer_id: '', points: '', reason: '' });
-        }}
-      />
+      {showAdjustDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg max-w-md w-full space-y-4">
+            <h2 className="text-lg font-bold">Adjust Points</h2>
+            <Input
+              label="Customer ID"
+              value={adjustForm.customer_id}
+              onChange={(event) => setAdjustForm((current) => ({ ...current, customer_id: event.target.value }))}
+            />
+            <Input
+              label="Points"
+              type="number"
+              value={adjustForm.points}
+              onChange={(event) => setAdjustForm((current) => ({ ...current, points: event.target.value }))}
+            />
+            <Input
+              label="Reason"
+              value={adjustForm.reason}
+              onChange={(event) => setAdjustForm((current) => ({ ...current, reason: event.target.value }))}
+            />
+            <div className="flex justify-end space-x-2">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setShowAdjustDialog(false);
+                  setAdjustForm({ customer_id: '', points: '', reason: '' });
+                }}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleAdjustPoints} loading={adjustMutation.isPending}>
+                Adjust
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
-      {/* Enroll Customer Dialog */}
-      <ConfirmDialog
-        open={backendCapabilities.loyalty.enrollment && showEnrollDialog}
-        title="Enroll Customer"
-        body="Enter the customer ID to enroll in the loyalty program"
-        confirmLabel={enrollMutation.isPending ? 'Enrolling...' : 'Enroll'}
-        onConfirm={handleEnrollCustomer}
-        onCancel={() => {
-          setShowEnrollDialog(false);
-          setEnrollForm({ customer_id: '' });
-        }}
-      />
+      {showEnrollDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg max-w-md w-full space-y-4">
+            <h2 className="text-lg font-bold">Enroll Customer</h2>
+            <Input
+              label="Customer ID"
+              value={enrollForm.customer_id}
+              onChange={(event) => setEnrollForm({ customer_id: event.target.value })}
+            />
+            <div className="flex justify-end space-x-2">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setShowEnrollDialog(false);
+                  setEnrollForm({ customer_id: '' });
+                }}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleEnrollCustomer} loading={enrollMutation.isPending}>
+                Enroll
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
-      {/* Create/Edit Tier Dialog */}
-      <ConfirmDialog
-        open={backendCapabilities.loyalty.tierManagement && showTierDialog}
-        title={tierForm.name ? 'Edit Tier' : 'Create Tier'}
-        body="Configure the loyalty tier details"
-        confirmLabel={createTierMutation.isPending ? 'Saving...' : 'Save'}
-        onConfirm={handleCreateTier}
-        onCancel={() => {
-          setShowTierDialog(false);
-          setTierForm({
-            name: '',
-            description: '',
-            min_points: 0,
-            max_points: undefined,
-            benefits: '',
-            multiplier: 1,
-          });
-        }}
-      />
+      {showTierDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg max-w-lg w-full space-y-4">
+            <h2 className="text-lg font-bold">{editingTierId ? 'Edit Tier' : 'Create Tier'}</h2>
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="Name"
+                value={tierForm.name}
+                onChange={(event) => setTierForm((current) => ({ ...current, name: event.target.value }))}
+              />
+              <Input
+                label="Multiplier"
+                type="number"
+                value={tierForm.multiplier}
+                onChange={(event) => setTierForm((current) => ({ ...current, multiplier: Number(event.target.value) || 1 }))}
+              />
+              <Input
+                label="Min Points"
+                type="number"
+                value={tierForm.min_points}
+                onChange={(event) => setTierForm((current) => ({ ...current, min_points: Number(event.target.value) || 0 }))}
+              />
+              <Input
+                label="Max Points"
+                type="number"
+                value={tierForm.max_points ?? ''}
+                onChange={(event) => setTierForm((current) => ({
+                  ...current,
+                  max_points: event.target.value ? Number(event.target.value) : undefined,
+                }))}
+              />
+            </div>
+            <Input
+              label="Description"
+              value={tierForm.description}
+              onChange={(event) => setTierForm((current) => ({ ...current, description: event.target.value }))}
+            />
+            <Input
+              label="Benefits (comma separated)"
+              value={tierForm.benefits}
+              onChange={(event) => setTierForm((current) => ({ ...current, benefits: event.target.value }))}
+            />
+            <div className="flex justify-end space-x-2">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setShowTierDialog(false);
+                  setEditingTierId(null);
+                  setTierForm({
+                    name: '',
+                    description: '',
+                    min_points: 0,
+                    max_points: undefined,
+                    benefits: '',
+                    multiplier: 1,
+                  });
+                }}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleCreateTier} loading={createTierMutation.isPending || updateTierMutation.isPending}>
+                Save
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Tier Confirmation */}
       <ConfirmDialog
-        open={backendCapabilities.loyalty.tierManagement && !!deleteTarget}
+        open={!!deleteTarget}
         title="Delete Tier"
         body="Are you sure you want to delete this tier? Customers in this tier will be moved to the default tier."
         confirmLabel="Delete"

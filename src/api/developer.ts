@@ -2,7 +2,7 @@
  * src/api/developer.ts
  * Backend-aligned developer adapters
  */
-import { request, unsupportedApi } from './client';
+import { request } from './client';
 
 const DEVELOPER_BASE = '/api/v1/developer';
 
@@ -40,6 +40,9 @@ export interface CreateWebhookRequest {
   url: string;
   events: string[];
   secret?: string;
+  name?: string;
+  app_id?: string;
+  client_id?: string;
 }
 
 export interface ApiUsage {
@@ -130,16 +133,28 @@ interface RawDeveloperApp {
   id?: string | number;
   name?: string;
   client_id?: string;
+  client_secret?: string;
+  description?: string;
+  app_type?: string;
+  redirect_uris?: string[];
+  scopes?: string[];
   status?: string;
   tier?: string;
+  created_at?: string;
 }
 
-interface RawCreatedDeveloperApp {
+interface RawWebhook {
   id?: string | number;
+  app_id?: string | number;
   client_id?: string;
-  client_secret?: string;
   name?: string;
-  scopes?: string[];
+  url?: string;
+  events?: string[];
+  secret?: string;
+  is_active?: boolean;
+  last_triggered_at?: string | null;
+  created_at?: string;
+  created_by?: string;
 }
 
 const nowIso = () => new Date().toISOString();
@@ -162,22 +177,33 @@ const mapAppToApiKey = (app: RawDeveloperApp): ApiKey => ({
   name: app.name ?? 'Developer App',
   key: String(app.client_id ?? ''),
   key_preview: String(app.client_id ?? '').slice(0, 8),
-  scopes: [],
+  scopes: Array.isArray(app.scopes) ? app.scopes : [],
   is_active: (app.status ?? 'ACTIVE') === 'ACTIVE',
-  created_at: nowIso(),
+  created_at: app.created_at ?? nowIso(),
   created_by: 'current_user',
 });
 
 const mapAppToOAuth = (app: RawDeveloperApp): OAuthApplication => ({
   client_id: String(app.client_id ?? ''),
-  client_secret: '',
+  client_secret: String(app.client_secret ?? ''),
   name: app.name ?? 'Developer App',
-  description: app.tier ? `Tier: ${app.tier}` : undefined,
-  redirect_uris: [],
-  scopes: [],
+  description: app.description ?? (app.tier ? `Tier: ${app.tier}` : undefined),
+  redirect_uris: Array.isArray(app.redirect_uris) ? app.redirect_uris : [],
+  scopes: Array.isArray(app.scopes) ? app.scopes : [],
   is_active: (app.status ?? 'ACTIVE') === 'ACTIVE',
-  created_at: nowIso(),
+  created_at: app.created_at ?? nowIso(),
   created_by: 'current_user',
+});
+
+const mapWebhook = (webhook: RawWebhook): Webhook => ({
+  id: String(webhook.id ?? webhook.app_id ?? webhook.client_id ?? ''),
+  url: webhook.url ?? '',
+  events: Array.isArray(webhook.events) ? webhook.events : [],
+  secret: webhook.secret ?? '',
+  is_active: webhook.is_active ?? true,
+  last_triggered_at: webhook.last_triggered_at ?? undefined,
+  created_at: webhook.created_at ?? nowIso(),
+  created_by: webhook.created_by ?? 'current_user',
 });
 
 const getDeveloperApps = () => request<RawDeveloperApp[]>({ url: `${DEVELOPER_BASE}/apps`, method: 'GET' });
@@ -185,11 +211,15 @@ const getDeveloperApps = () => request<RawDeveloperApp[]>({ url: `${DEVELOPER_BA
 export const developerApi = {
   getApiKeys: async (): Promise<ApiKey[]> => {
     const response = await getDeveloperApps();
-    return Array.isArray(response) ? response.map(mapAppToApiKey) : [];
+    return Array.isArray(response)
+      ? response
+          .filter((app) => app.app_type !== 'WEB' && app.app_type !== 'MOBILE')
+          .map(mapAppToApiKey)
+      : [];
   },
 
   createApiKey: async (data: CreateApiKeyRequest): Promise<ApiKey> => {
-    const response = await request<RawCreatedDeveloperApp>({
+    const response = await request<RawDeveloperApp>({
       url: `${DEVELOPER_BASE}/apps`,
       method: 'POST',
       data: {
@@ -214,40 +244,83 @@ export const developerApi = {
     };
   },
 
-  deleteApiKey: async (_keyId: string): Promise<void> => unsupportedApi('Deleting developer apps'),
+  deleteApiKey: async (keyId: string): Promise<void> => {
+    await request<{ id: string; deleted: boolean }>({
+      url: `${DEVELOPER_BASE}/apps/${keyId}`,
+      method: 'DELETE',
+    });
+  },
 
-  regenerateApiKey: async (_keyId: string): Promise<{ key: string }> => unsupportedApi('Regenerating developer credentials'),
+  regenerateApiKey: async (keyId: string): Promise<{ key: string }> => {
+    const response = await request<{ client_secret?: string }>({
+      url: `${DEVELOPER_BASE}/apps/${keyId}/regenerate-secret`,
+      method: 'POST',
+    });
+    return {
+      key: String(response.client_secret ?? ''),
+    };
+  },
 
-  getWebhooks: async (): Promise<Webhook[]> => [],
+  getWebhooks: async (): Promise<Webhook[]> => {
+    const response = await request<RawWebhook[]>({
+      url: `${DEVELOPER_BASE}/webhooks`,
+      method: 'GET',
+    });
+    return Array.isArray(response) ? response.map(mapWebhook) : [];
+  },
 
-  createWebhook: async (_data: CreateWebhookRequest): Promise<Webhook> => unsupportedApi('Developer webhooks'),
+  createWebhook: async (data: CreateWebhookRequest): Promise<Webhook> => {
+    const response = await request<RawWebhook>({
+      url: `${DEVELOPER_BASE}/webhooks`,
+      method: 'POST',
+      data,
+    });
+    return mapWebhook(response);
+  },
 
-  updateWebhook: async (_webhookId: string, _data: Partial<CreateWebhookRequest>): Promise<Webhook> =>
-    unsupportedApi('Developer webhooks'),
+  updateWebhook: async (webhookId: string, data: Partial<CreateWebhookRequest>): Promise<Webhook> => {
+    const response = await request<RawWebhook>({
+      url: `${DEVELOPER_BASE}/webhooks/${webhookId}`,
+      method: 'PATCH',
+      data,
+    });
+    return mapWebhook(response);
+  },
 
-  deleteWebhook: async (_webhookId: string): Promise<void> => unsupportedApi('Developer webhooks'),
+  deleteWebhook: async (webhookId: string): Promise<void> => {
+    await request<{ id: string; deleted: boolean }>({
+      url: `${DEVELOPER_BASE}/webhooks/${webhookId}`,
+      method: 'DELETE',
+    });
+  },
 
-  testWebhook: async (_webhookId: string): Promise<{ success: boolean; message: string }> =>
-    unsupportedApi('Developer webhooks'),
+  testWebhook: async (webhookId: string): Promise<{ success: boolean; message: string }> =>
+    request<{ success: boolean; message: string }>({
+      url: `${DEVELOPER_BASE}/webhooks/${webhookId}/test`,
+      method: 'POST',
+    }),
 
-  getUsageStats: async (_params?: {
+  getUsageStats: async (params?: {
     from_date?: string;
     to_date?: string;
-  }): Promise<ApiUsageStats> => ({
-    total_requests: 0,
-    total_errors: 0,
-    avg_response_time: 0,
-    top_endpoints: [],
-    daily_usage: [],
-  }),
+  }): Promise<ApiUsageStats> =>
+    request<ApiUsageStats>({
+      url: `${DEVELOPER_BASE}/usage`,
+      method: 'GET',
+      params,
+    }),
 
   getOAuthApplications: async (): Promise<OAuthApplication[]> => {
     const response = await getDeveloperApps();
-    return Array.isArray(response) ? response.map(mapAppToOAuth) : [];
+    return Array.isArray(response)
+      ? response
+          .filter((app) => app.app_type === 'WEB' || app.app_type === 'MOBILE')
+          .map(mapAppToOAuth)
+      : [];
   },
 
   createOAuthApplication: async (data: CreateOAuthApplicationRequest): Promise<OAuthApplication> => {
-    const response = await request<RawCreatedDeveloperApp>({
+    const response = await request<RawDeveloperApp>({
       url: `${DEVELOPER_BASE}/apps`,
       method: 'POST',
       data: {
@@ -272,13 +345,27 @@ export const developerApi = {
     };
   },
 
-  updateOAuthApplication: async (_clientId: string, _data: Partial<CreateOAuthApplicationRequest>): Promise<OAuthApplication> =>
-    unsupportedApi('Updating developer apps'),
+  updateOAuthApplication: async (clientId: string, data: Partial<CreateOAuthApplicationRequest>): Promise<OAuthApplication> => {
+    const response = await request<RawDeveloperApp>({
+      url: `${DEVELOPER_BASE}/apps/${clientId}`,
+      method: 'PATCH',
+      data,
+    });
+    return mapAppToOAuth(response);
+  },
 
-  deleteOAuthApplication: async (_clientId: string): Promise<void> => unsupportedApi('Deleting developer apps'),
+  deleteOAuthApplication: async (clientId: string): Promise<void> => {
+    await request<{ id: string; deleted: boolean }>({
+      url: `${DEVELOPER_BASE}/apps/${clientId}`,
+      method: 'DELETE',
+    });
+  },
 
-  regenerateClientSecret: async (_clientId: string): Promise<{ client_secret: string }> =>
-    unsupportedApi('Regenerating client secrets'),
+  regenerateClientSecret: async (clientId: string): Promise<{ client_secret: string }> =>
+    request<{ client_secret: string }>({
+      url: `${DEVELOPER_BASE}/apps/${clientId}/regenerate-secret`,
+      method: 'POST',
+    }),
 
   authorize: async (params: {
     client_id: string;
@@ -343,10 +430,76 @@ export const developerApi = {
         response: { status: 201, schema: { type: 'object' } },
       },
       {
+        path: '/api/v1/developer/apps/<app_ref>',
+        method: 'PATCH',
+        description: 'Update a developer application or API key configuration.',
+        response: { status: 200, schema: { type: 'object' } },
+      },
+      {
+        path: '/api/v1/developer/apps/<app_ref>',
+        method: 'DELETE',
+        description: 'Delete a developer application or API key.',
+        response: { status: 200, schema: { type: 'object' } },
+      },
+      {
+        path: '/api/v1/developer/apps/<app_ref>/regenerate-secret',
+        method: 'POST',
+        description: 'Rotate a developer application client secret.',
+        response: { status: 200, schema: { type: 'object' } },
+      },
+      {
         path: '/api/v1/developer/marketplace',
         method: 'GET',
         description: 'List approved marketplace applications.',
         response: { status: 200, schema: { type: 'array' } },
+      },
+      {
+        path: '/api/v1/developer/webhooks',
+        method: 'GET',
+        description: 'List configured developer webhooks.',
+        response: { status: 200, schema: { type: 'array' } },
+      },
+      {
+        path: '/api/v1/developer/webhooks',
+        method: 'POST',
+        description: 'Create a developer webhook subscription.',
+        response: { status: 201, schema: { type: 'object' } },
+      },
+      {
+        path: '/api/v1/developer/webhooks/<app_ref>',
+        method: 'PATCH',
+        description: 'Update a developer webhook subscription.',
+        response: { status: 200, schema: { type: 'object' } },
+      },
+      {
+        path: '/api/v1/developer/webhooks/<app_ref>',
+        method: 'DELETE',
+        description: 'Delete a developer webhook subscription.',
+        response: { status: 200, schema: { type: 'object' } },
+      },
+      {
+        path: '/api/v1/developer/webhooks/<app_ref>/test',
+        method: 'POST',
+        description: 'Queue a webhook delivery test.',
+        response: { status: 200, schema: { type: 'object' } },
+      },
+      {
+        path: '/api/v1/developer/usage',
+        method: 'GET',
+        description: 'Inspect aggregated developer usage statistics.',
+        response: { status: 200, schema: { type: 'object' } },
+      },
+      {
+        path: '/api/v1/developer/rate-limits',
+        method: 'GET',
+        description: 'Inspect current developer app rate limits.',
+        response: { status: 200, schema: { type: 'array' } },
+      },
+      {
+        path: '/api/v1/developer/logs',
+        method: 'GET',
+        description: 'Inspect recent developer-facing API and webhook logs.',
+        response: { status: 200, schema: { type: 'object' } },
       },
       {
         path: '/oauth/authorize',
@@ -365,12 +518,23 @@ export const developerApi = {
 
   getRateLimits: async (): Promise<{
     endpoint: string;
+    client_id: string;
     limit: number;
     remaining: number;
     reset_at: string;
-  }[]> => [],
+  }[]> =>
+    request<{
+      endpoint: string;
+      client_id: string;
+      limit: number;
+      remaining: number;
+      reset_at: string;
+    }[]>({
+      url: `${DEVELOPER_BASE}/rate-limits`,
+      method: 'GET',
+    }),
 
-  getApiLogs: async (_params?: {
+  getApiLogs: async (params?: {
     from_date?: string;
     to_date?: string;
     level?: 'error' | 'warn' | 'info';
@@ -385,8 +549,20 @@ export const developerApi = {
       user_agent?: string;
     }[];
     total: number;
-  }> => ({
-    logs: [],
-    total: 0,
-  }),
+  }> =>
+    request<{
+      logs: {
+        timestamp: string;
+        level: string;
+        message: string;
+        request_id: string;
+        ip_address: string;
+        user_agent?: string;
+      }[];
+      total: number;
+    }>({
+      url: `${DEVELOPER_BASE}/logs`,
+      method: 'GET',
+      params,
+    }),
 };

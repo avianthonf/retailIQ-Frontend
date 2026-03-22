@@ -2,7 +2,7 @@
  * src/api/chain.ts
  * Backend-aligned chain adapters
  */
-import { request, unsupportedApi } from './client';
+import { request } from './client';
 
 const CHAIN_BASE = '/api/v1/chain';
 
@@ -97,6 +97,7 @@ export interface StoreMetric {
 
 interface RawChainDashboard {
   total_revenue_today?: number;
+  total_open_alerts?: number;
   per_store_today?: Array<{
     store_id?: string;
     name?: string;
@@ -111,6 +112,27 @@ interface RawChainDashboard {
     qty?: number;
     reason?: string;
   }>;
+}
+
+interface RawChainGroup {
+  group_id?: string;
+  name?: string;
+  description?: string;
+  owner_user_id?: string | number;
+  created_at?: string;
+  updated_at?: string;
+  member_store_ids?: Array<string | number>;
+}
+
+interface RawTransfer {
+  id?: string;
+  from_store?: string;
+  to_store?: string;
+  product?: string;
+  qty?: number;
+  status?: string;
+  reason?: string;
+  created_at?: string;
 }
 
 const nowIso = () => new Date().toISOString();
@@ -185,20 +207,47 @@ export const chainApi = {
   },
 
   getGroup: async (chainId: string): Promise<ChainGroup> => {
-    const dashboard = await getDashboardRaw();
+    const [group, dashboard] = await Promise.all([
+      request<RawChainGroup>({
+        url: `${CHAIN_BASE}/groups/${chainId}`,
+        method: 'GET',
+      }),
+      getDashboardRaw(),
+    ]);
+    const storeLookup = new Map(
+      (dashboard.per_store_today ?? []).map((store) => [String(store.store_id ?? ''), store]),
+    );
+
     return {
-      chain_id: chainId,
-      name: `Chain ${chainId.slice(0, 8)}`,
-      description: undefined,
-      owner_id: '',
-      created_at: nowIso(),
-      updated_at: nowIso(),
-      member_stores: mapStoresFromDashboard(chainId, dashboard),
+      chain_id: String(group.group_id ?? chainId),
+      name: group.name ?? `Chain ${chainId.slice(0, 8)}`,
+      description: group.description ?? undefined,
+      owner_id: String(group.owner_user_id ?? ''),
+      created_at: group.created_at ?? nowIso(),
+      updated_at: group.updated_at ?? nowIso(),
+      member_stores: Array.isArray(group.member_store_ids)
+        ? group.member_store_ids.map((storeId) => {
+            const dashboardStore = storeLookup.get(String(storeId));
+            return {
+              store_id: String(storeId),
+              chain_id: chainId,
+              store_name: dashboardStore?.name ?? `Store ${storeId}`,
+              joined_at: group.created_at ?? nowIso(),
+              is_active: true,
+            };
+          })
+        : mapStoresFromDashboard(chainId, dashboard),
     };
   },
 
-  updateGroup: async (_chainId: string, _data: Partial<CreateChainGroupRequest>): Promise<ChainGroup> =>
-    unsupportedApi('Chain group updates'),
+  updateGroup: async (chainId: string, data: Partial<CreateChainGroupRequest>): Promise<ChainGroup> => {
+    await request<RawChainGroup>({
+      url: `${CHAIN_BASE}/groups/${chainId}`,
+      method: 'PATCH',
+      data,
+    });
+    return chainApi.getGroup(chainId);
+  },
 
   addStore: async (chainId: string, data: AddStoreRequest): Promise<ChainStore> => {
     await request<{ membership_id?: string }>({
@@ -216,7 +265,12 @@ export const chainApi = {
     };
   },
 
-  removeStore: async (_chainId: string, _storeId: string): Promise<void> => unsupportedApi('Removing stores from a chain'),
+  removeStore: async (chainId: string, storeId: string): Promise<void> => {
+    await request<{ store_id: string; removed: boolean }>({
+      url: `${CHAIN_BASE}/groups/${chainId}/stores/${storeId}`,
+      method: 'DELETE',
+    });
+  },
 
   getDashboard: async (chainId: string): Promise<ChainDashboard> => {
     const dashboard = await getDashboardRaw();
@@ -237,7 +291,7 @@ export const chainApi = {
       total_revenue: Number(dashboard.total_revenue_today ?? 0),
       total_transactions: stores.reduce((sum, store) => sum + Number(store.transaction_count ?? 0), 0),
       top_performing_stores: topStores,
-      recent_transfers: [],
+      recent_transfers: await chainApi.getTransfers(chainId),
     };
   },
 
@@ -274,11 +328,32 @@ export const chainApi = {
     return mapSuggestions(dashboard);
   },
 
-  createTransfer: async (_chainId: string, _data: CreateTransferRequest): Promise<StockTransfer> =>
-    unsupportedApi('Creating chain transfers'),
+  createTransfer: async (_chainId: string, data: CreateTransferRequest): Promise<StockTransfer> => {
+    const response = await request<RawTransfer>({
+      url: `${CHAIN_BASE}/transfers`,
+      method: 'POST',
+      data: {
+        from_store_id: data.from_store_id,
+        to_store_id: data.to_store_id,
+        product_id: data.product_id,
+        quantity: data.quantity,
+        notes: data.notes,
+      },
+    });
+
+    return {
+      transfer_id: String(response.id ?? ''),
+      from_store_id: String(response.from_store ?? data.from_store_id),
+      to_store_id: String(response.to_store ?? data.to_store_id),
+      product_id: String(response.product ?? data.product_id),
+      quantity: Number(response.qty ?? data.quantity),
+      status: mapTransferStatus(response.status),
+      created_at: response.created_at ?? nowIso(),
+    };
+  },
 
   getTransfers: async (_chainId: string): Promise<StockTransfer[]> => {
-    const response = await request<Array<{ id?: string; from_store?: string; to_store?: string; product?: string; qty?: number; status?: string }>>({
+    const response = await request<RawTransfer[]>({
       url: `${CHAIN_BASE}/transfers`,
       method: 'GET',
     });
@@ -291,14 +366,14 @@ export const chainApi = {
           product_id: String(transfer.product ?? ''),
           quantity: Number(transfer.qty ?? 0),
           status: mapTransferStatus(transfer.status),
-          created_at: nowIso(),
+          created_at: transfer.created_at ?? nowIso(),
         }))
       : [];
   },
 
   updateTransferStatus: async (_chainId: string, transferId: string, status: StockTransfer['status']): Promise<StockTransfer> => {
     if (status !== 'COMPLETED') {
-      return unsupportedApi('Updating transfer status');
+      throw new Error('The backend currently supports confirming transfers only.');
     }
 
     await request<{ id?: string }>({

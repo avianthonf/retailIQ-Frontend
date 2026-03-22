@@ -25,6 +25,7 @@ export const financeKeys = {
   treasuryBalance: () => [...financeKeys.all, 'treasuryBalance'] as const,
   treasuryConfig: () => [...financeKeys.all, 'treasuryConfig'] as const,
   treasuryTransactions: () => [...financeKeys.all, 'treasuryTransactions'] as const,
+  dashboard: () => [...financeKeys.all, 'dashboard'] as const,
 };
 
 // KYC
@@ -170,6 +171,14 @@ export const useTreasuryBalanceQuery = () => {
     queryKey: financeKeys.treasuryBalance(),
     queryFn: () => financeApi.financeApi.getTreasuryBalance(),
     staleTime: 30000, // 30 seconds
+  });
+};
+
+export const useFinanceDashboardQuery = () => {
+  return useQuery({
+    queryKey: financeKeys.dashboard(),
+    queryFn: () => financeApi.financeApi.getFinanceDashboard(),
+    staleTime: 30000,
   });
 };
 

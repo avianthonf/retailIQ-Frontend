@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { DataTable } from '@/components/ui/DataTable';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
-import { getMaintenanceStatus, getPlatformHealth, getPlatformRoot, pingTeam } from '@/api/platform';
+import { getMaintenanceStatus, getPlatformHealth, getPlatformRoot, pingTeam, probeWebsocketEndpoint } from '@/api/platform';
 import { normalizeApiError } from '@/utils/errors';
 
 export default function ApiValidationPage() {
@@ -33,8 +33,14 @@ export default function ApiValidationPage() {
     staleTime: 30_000,
   });
 
-  const isLoading = [healthQuery.isLoading, rootQuery.isLoading, maintenanceQuery.isLoading, teamPingQuery.isLoading].some(Boolean);
-  const firstError = [healthQuery.error, rootQuery.error, maintenanceQuery.error, teamPingQuery.error].find(Boolean);
+  const websocketQuery = useQuery({
+    queryKey: ['platform', 'websocket'],
+    queryFn: probeWebsocketEndpoint,
+    staleTime: 30_000,
+  });
+
+  const isLoading = [healthQuery.isLoading, rootQuery.isLoading, maintenanceQuery.isLoading, teamPingQuery.isLoading, websocketQuery.isLoading].some(Boolean);
+  const firstError = [healthQuery.error, rootQuery.error, maintenanceQuery.error, teamPingQuery.error, websocketQuery.error].find(Boolean);
 
   if (isLoading) {
     return (
@@ -58,6 +64,7 @@ export default function ApiValidationPage() {
     { endpoint: '/', status: String(rootQuery.data?.status ?? rootQuery.data?.message ?? 'ok'), detail: JSON.stringify(rootQuery.data) },
     { endpoint: '/api/v1/ops/maintenance', status: String(maintenance?.system_status ?? 'unknown'), detail: `${maintenance?.scheduled_maintenance.length ?? 0} scheduled / ${maintenance?.ongoing_incidents.length ?? 0} incidents` },
     { endpoint: '/api/v1/team/ping', status: teamPingQuery.data?.success ? 'success' : 'unexpected', detail: JSON.stringify(teamPingQuery.data) },
+    { endpoint: '/ws', status: 'reachable', detail: JSON.stringify(websocketQuery.data ?? '') },
   ];
 
   return (
@@ -67,13 +74,14 @@ export default function ApiValidationPage() {
       actions={(
         <Button
           variant="secondary"
-          onClick={() => {
-            void healthQuery.refetch();
-            void rootQuery.refetch();
-            void maintenanceQuery.refetch();
-            void teamPingQuery.refetch();
-          }}
-        >
+            onClick={() => {
+              void healthQuery.refetch();
+              void rootQuery.refetch();
+              void maintenanceQuery.refetch();
+              void teamPingQuery.refetch();
+              void websocketQuery.refetch();
+            }}
+          >
           Refresh diagnostics
         </Button>
       )}
@@ -112,6 +120,14 @@ export default function ApiValidationPage() {
               <div className="text-xl font-semibold">{teamPingQuery.data?.success ? 'ok' : 'unexpected'}</div>
             </CardContent>
           </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium text-gray-500">WebSocket Probe</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-xl font-semibold">{websocketQuery.data !== undefined ? 'reachable' : 'unknown'}</div>
+            </CardContent>
+          </Card>
         </div>
 
         <Card>
@@ -148,7 +164,7 @@ export default function ApiValidationPage() {
             </CardHeader>
             <CardContent>
               <pre className="overflow-x-auto rounded-md bg-gray-900 p-4 text-sm text-gray-100">
-                {JSON.stringify({ health: healthQuery.data, root: rootQuery.data, teamPing: teamPingQuery.data }, null, 2)}
+                {JSON.stringify({ health: healthQuery.data, root: rootQuery.data, teamPing: teamPingQuery.data, websocket: websocketQuery.data }, null, 2)}
               </pre>
             </CardContent>
           </Card>

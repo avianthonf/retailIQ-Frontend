@@ -1,16 +1,16 @@
 export const backendCapabilities = {
   developer: {
-    webhooks: false,
+    webhooks: true,
     standaloneDocs: false,
   },
   loyalty: {
-    manualAdjustments: false,
-    enrollment: false,
-    tierManagement: false,
+    manualAdjustments: true,
+    enrollment: true,
+    tierManagement: true,
   },
   gst: {
-    filing: false,
-    hsnMappings: false,
+    filing: true,
+    hsnMappings: true,
   },
   marketIntelligence: {
     competitors: false,
@@ -22,16 +22,16 @@ export const backendCapabilities = {
     loanApplications: true,
   },
   purchaseOrders: {
-    draftEditing: false,
-    confirmation: false,
-    pdfGeneration: false,
-    emailDelivery: false,
+    draftEditing: true,
+    confirmation: true,
+    pdfGeneration: true,
+    emailDelivery: true,
   },
   whatsapp: {
-    arbitraryMessaging: false,
-    templateCreation: false,
-    campaigns: false,
-    optInManagement: false,
-    testMessages: false,
+    arbitraryMessaging: true,
+    templateCreation: true,
+    campaigns: true,
+    optInManagement: true,
+    testMessages: true,
   },
 } as const;

@@ -105,6 +105,9 @@ export interface TreasuryConfig {
   reserve_percentage: number;
   daily_transfer_limit: number;
   settlement_account_id: string;
+  strategy?: string;
+  sweep_threshold?: number;
+  created_at?: string;
 }
 
 export interface TreasuryBalance {
@@ -114,6 +117,14 @@ export interface TreasuryBalance {
   pending_transfers: number;
   currency: string;
   last_updated: string;
+  yield_bps?: number;
+}
+
+export interface FinanceDashboard {
+  cash_on_hand: number;
+  treasury_balance: number;
+  total_debt: number;
+  credit_score: number;
 }
 
 export interface TreasuryTransaction {
@@ -215,9 +226,6 @@ const mapAccountType = (type?: string): FinancialAccount['type'] => {
 
 const mapLedgerEntryType = (type?: string): LedgerEntry['entry_type'] => (type === 'DEBIT' ? 'DEBIT' : 'CREDIT');
 
-const mapTreasuryTransactionType = (type?: string): TreasuryTransaction['type'] =>
-  type === 'DEBIT' ? 'TRANSFER_OUT' : 'TRANSFER_IN';
-
 const defaultTreasuryConfig = (): TreasuryConfig => ({
   auto_transfer_enabled: false,
   reserve_percentage: 0,
@@ -225,7 +233,7 @@ const defaultTreasuryConfig = (): TreasuryConfig => ({
   settlement_account_id: '',
 });
 
-const getFinanceDashboard = () => request<FinanceDashboardResponse>({ url: `${FINANCE_BASE}/dashboard`, method: 'GET' });
+const fetchFinanceDashboard = () => request<FinanceDashboardResponse>({ url: `${FINANCE_BASE}/dashboard`, method: 'GET' });
 
 export const financeApi = {
   submitKYC: async (data: KYCSubmission): Promise<KYCRecord> => {
@@ -292,7 +300,7 @@ export const financeApi = {
   },
 
   getCreditLedger: async (): Promise<CreditLedger> => {
-    const dashboard = await getFinanceDashboard();
+    const dashboard = await fetchFinanceDashboard();
     const totalDebt = Number(dashboard.total_debt ?? 0);
 
     return {
@@ -429,7 +437,7 @@ export const financeApi = {
   },
 
   getTreasuryBalance: async (): Promise<TreasuryBalance> => {
-    const response = await request<{ available?: number; currency?: string }>({
+    const response = await request<{ available?: number; yield_bps?: number; currency?: string }>({
       url: `${FINANCE_BASE}/treasury/balance`,
       method: 'GET',
     });
@@ -443,10 +451,44 @@ export const financeApi = {
       pending_transfers: 0,
       currency: response.currency ?? 'INR',
       last_updated: nowIso(),
+      yield_bps: response.yield_bps,
     };
   },
 
-  getTreasuryConfig: async (): Promise<TreasuryConfig> => defaultTreasuryConfig(),
+  getFinanceDashboard: async (): Promise<FinanceDashboard> => {
+    const response = await fetchFinanceDashboard();
+    return {
+      cash_on_hand: Number(response.cash_on_hand ?? 0),
+      treasury_balance: Number(response.treasury_balance ?? 0),
+      total_debt: Number(response.total_debt ?? 0),
+      credit_score: Number(response.credit_score ?? 0),
+    };
+  },
+
+  getTreasuryConfig: async (): Promise<TreasuryConfig> => {
+    const response = await request<{
+      auto_transfer_enabled?: boolean;
+      reserve_percentage?: number;
+      daily_transfer_limit?: number;
+      settlement_account_id?: string;
+      strategy?: string;
+      sweep_threshold?: number;
+      created_at?: string;
+    }>({
+      url: `${FINANCE_BASE}/treasury/config`,
+      method: 'GET',
+    });
+
+    return {
+      auto_transfer_enabled: Boolean(response.auto_transfer_enabled ?? false),
+      reserve_percentage: Number(response.reserve_percentage ?? 0),
+      daily_transfer_limit: Number(response.daily_transfer_limit ?? 0),
+      settlement_account_id: response.settlement_account_id ?? '',
+      strategy: response.strategy,
+      sweep_threshold: response.sweep_threshold,
+      created_at: response.created_at,
+    };
+  },
 
   updateTreasuryConfig: async (data: Partial<TreasuryConfig>): Promise<TreasuryConfig> => {
     await request<{ active?: boolean }>({
@@ -465,16 +507,22 @@ export const financeApi = {
   },
 
   getTreasuryTransactions: async (): Promise<TreasuryTransaction[]> => {
-    const ledgerEntries = await financeApi.getLedgerEntries();
-    return ledgerEntries.map((entry) => ({
-      id: entry.id,
-      type: mapTreasuryTransactionType(entry.entry_type),
-      amount: entry.amount,
-      description: entry.description,
-      status: 'COMPLETED',
-      created_at: entry.created_at,
-      completed_at: entry.created_at,
-    }));
+    const response = await request<TreasuryTransaction[]>({
+      url: `${FINANCE_BASE}/treasury/transactions`,
+      method: 'GET',
+    });
+
+    return Array.isArray(response)
+      ? response.map((txn) => ({
+          id: String(txn.id),
+          type: txn.type,
+          amount: Number(txn.amount ?? 0),
+          description: txn.description ?? 'Treasury transaction',
+          status: txn.status ?? 'COMPLETED',
+          created_at: txn.created_at ?? nowIso(),
+          completed_at: txn.completed_at ?? txn.created_at ?? nowIso(),
+        }))
+      : [];
   },
 
   processPayment: async (data: {

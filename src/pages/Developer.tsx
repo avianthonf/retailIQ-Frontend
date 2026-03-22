@@ -13,7 +13,20 @@ import {
   useApiKeysQuery,
   useCreateApiKeyMutation,
   useCreateOAuthApplicationMutation,
+  useApiLogsQuery,
+  useDeleteApiKeyMutation,
+  useDeleteOAuthApplicationMutation,
   useOAuthApplicationsQuery,
+  useRateLimitsQuery,
+  useRegenerateApiKeyMutation,
+  useRegenerateClientSecretMutation,
+  useUpdateWebhookMutation,
+  useUpdateOAuthApplicationMutation,
+  useUsageStatsQuery,
+  useWebhooksQuery,
+  useCreateWebhookMutation,
+  useDeleteWebhookMutation,
+  useTestWebhookMutation,
 } from '@/hooks/developer';
 import {
   useDeveloperMarketplaceQuery,
@@ -23,11 +36,11 @@ import {
 } from '@/hooks/developerExtras';
 import { normalizeApiError } from '@/utils/errors';
 import { uiStore } from '@/stores/uiStore';
-import type { ApiKey, OAuthApplication } from '@/api/developer';
+import type { ApiKey, ApiUsageStats, OAuthApplication, Webhook } from '@/api/developer';
 import type { DeveloperMarketplaceApp } from '@/api/developerExtras';
 import { formatDate } from '@/utils/dates';
 
-type DeveloperTab = 'onboarding' | 'marketplace' | 'api-keys' | 'oauth' | 'explorer' | 'docs';
+type DeveloperTab = 'onboarding' | 'marketplace' | 'api-keys' | 'oauth' | 'webhooks' | 'usage' | 'limits' | 'logs' | 'explorer' | 'docs';
 
 const explorerExamples = {
   inventory: '/api/v2/inventory?store_id=123',
@@ -59,19 +72,62 @@ export default function DeveloperPage() {
   });
   const [explorerResult, setExplorerResult] = useState<unknown>(null);
   const [explorerLabel, setExplorerLabel] = useState<string>('');
+  const [editingApiKeyId, setEditingApiKeyId] = useState<string | null>(null);
+  const [editingOauthClientId, setEditingOauthClientId] = useState<string | null>(null);
+  const [editingWebhookId, setEditingWebhookId] = useState<string | null>(null);
+  const [webhookForm, setWebhookForm] = useState({
+    url: '',
+    events: 'inventory.updated,orders.created',
+    secret: '',
+    name: '',
+  });
+  const [usageFilters, setUsageFilters] = useState({
+    from_date: '',
+    to_date: '',
+  });
+  const [logFilters, setLogFilters] = useState({
+    level: '' as '' | 'error' | 'warn' | 'info',
+    limit: '50',
+  });
 
   const apiKeysQuery = useApiKeysQuery();
   const oauthAppsQuery = useOAuthApplicationsQuery();
   const docsQuery = useApiDocumentationQuery();
   const marketplaceQuery = useDeveloperMarketplaceQuery();
+  const webhooksQuery = useWebhooksQuery();
+  const usageQuery = useUsageStatsQuery(usageFilters.from_date || usageFilters.to_date ? {
+    from_date: usageFilters.from_date || undefined,
+    to_date: usageFilters.to_date || undefined,
+  } : undefined);
+  const rateLimitsQuery = useRateLimitsQuery();
+  const apiLogsQuery = useApiLogsQuery({
+    level: logFilters.level || undefined,
+    limit: Number(logFilters.limit) || 50,
+  });
 
   const registerMutation = useRegisterDeveloperMutation();
   const createApiKeyMutation = useCreateApiKeyMutation();
   const createOauthMutation = useCreateOAuthApplicationMutation();
+  const updateAppMutation = useUpdateOAuthApplicationMutation();
+  const deleteApiKeyMutation = useDeleteApiKeyMutation();
+  const regenerateApiKeyMutation = useRegenerateApiKeyMutation();
+  const deleteOauthMutation = useDeleteOAuthApplicationMutation();
+  const regenerateClientSecretMutation = useRegenerateClientSecretMutation();
   const inventoryExplorerMutation = useDeveloperV2InventoryMutation();
   const salesExplorerMutation = useDeveloperV2SalesMutation();
+  const createWebhookMutation = useCreateWebhookMutation();
+  const updateWebhookMutation = useUpdateWebhookMutation();
+  const deleteWebhookMutation = useDeleteWebhookMutation();
+  const testWebhookMutation = useTestWebhookMutation();
 
-  const blockingError = apiKeysQuery.error ?? oauthAppsQuery.error ?? docsQuery.error ?? marketplaceQuery.error;
+  const blockingError = apiKeysQuery.error
+    ?? oauthAppsQuery.error
+    ?? docsQuery.error
+    ?? marketplaceQuery.error
+    ?? webhooksQuery.error
+    ?? usageQuery.error
+    ?? rateLimitsQuery.error
+    ?? apiLogsQuery.error;
   if (blockingError) {
     return (
       <PageFrame title="Developer API" subtitle="Build integrations against the RetailIQ platform.">
@@ -112,6 +168,56 @@ export default function DeveloperPage() {
       header: 'Status',
       render: (apiKey) => <Badge variant={apiKey.is_active ? 'success' : 'secondary'}>{apiKey.is_active ? 'Active' : 'Inactive'}</Badge>,
     },
+    {
+      key: 'actions',
+      header: 'Actions',
+      render: (apiKey) => (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              setEditingApiKeyId(apiKey.id);
+              setApiKeyForm({
+                name: apiKey.name,
+                scopes: apiKey.scopes.join(', '),
+                expires_at: apiKey.expires_at ?? '',
+              });
+              setActiveTab('api-keys');
+            }}
+          >
+            Edit
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => {
+              void regenerateApiKeyMutation.mutateAsync(apiKey.id).then((response) => {
+                addToast({ title: 'API key regenerated', message: response.key ? 'A new client secret was issued.' : 'Secret rotation completed.', variant: 'success' });
+              }).catch((error) => {
+                addToast({ title: 'Regeneration failed', message: normalizeApiError(error).message, variant: 'error' });
+              });
+            }}
+            loading={regenerateApiKeyMutation.isPending}
+          >
+            Regenerate
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={() => {
+              void deleteApiKeyMutation.mutateAsync(apiKey.id).then(() => {
+                addToast({ title: 'API key deleted', message: apiKey.name, variant: 'success' });
+              }).catch((error) => {
+                addToast({ title: 'Delete failed', message: normalizeApiError(error).message, variant: 'error' });
+              });
+            }}
+            loading={deleteApiKeyMutation.isPending}
+          >
+            Delete
+          </Button>
+        </div>
+      ),
+    },
   ];
 
   const oauthColumns: Column<OAuthApplication>[] = [
@@ -148,6 +254,153 @@ export default function DeveloperPage() {
         <code className="text-sm break-all">{app.client_secret || 'Returned only at creation time'}</code>
       ),
     },
+    {
+      key: 'actions',
+      header: 'Actions',
+      render: (app) => (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              setEditingOauthClientId(app.client_id);
+              setOAuthForm({
+                name: app.name,
+                description: app.description ?? '',
+                redirect_uris: app.redirect_uris.join(', '),
+                scopes: app.scopes.join(', '),
+              });
+              setActiveTab('oauth');
+            }}
+          >
+            Edit
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => {
+              void regenerateClientSecretMutation.mutateAsync(app.client_id).then(() => {
+                addToast({ title: 'Client secret regenerated', message: app.name, variant: 'success' });
+              }).catch((error) => {
+                addToast({ title: 'Secret rotation failed', message: normalizeApiError(error).message, variant: 'error' });
+              });
+            }}
+            loading={regenerateClientSecretMutation.isPending}
+          >
+            Regenerate
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={() => {
+              void deleteOauthMutation.mutateAsync(app.client_id).then(() => {
+                addToast({ title: 'OAuth app deleted', message: app.name, variant: 'success' });
+              }).catch((error) => {
+                addToast({ title: 'Delete failed', message: normalizeApiError(error).message, variant: 'error' });
+              });
+            }}
+            loading={deleteOauthMutation.isPending}
+          >
+            Delete
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  const webhookColumns: Column<Webhook>[] = [
+    { key: 'name', header: 'Webhook', render: (webhook) => webhook.id ? `${webhook.id}` : webhook.url },
+    { key: 'url', header: 'URL', render: (webhook) => webhook.url },
+    {
+      key: 'events',
+      header: 'Events',
+      render: (webhook) => (
+        <div className="flex flex-wrap gap-1">
+          {webhook.events.length ? webhook.events.map((event) => (
+            <Badge key={event} variant="secondary">{event}</Badge>
+          )) : <span className="text-sm text-gray-500">No events</span>}
+        </div>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (webhook) => <Badge variant={webhook.is_active ? 'success' : 'secondary'}>{webhook.is_active ? 'Active' : 'Inactive'}</Badge>,
+    },
+    { key: 'created_at', header: 'Created', render: (webhook) => formatDate(webhook.created_at) },
+    {
+      key: 'actions',
+      header: 'Actions',
+      render: (webhook) => (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              setEditingWebhookId(webhook.id);
+              setWebhookForm({
+                url: webhook.url,
+                events: webhook.events.join(', '),
+                secret: webhook.secret,
+                name: webhook.id,
+              });
+              setActiveTab('webhooks');
+            }}
+          >
+            Edit
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => {
+              void testWebhookMutation.mutateAsync(webhook.id).then(() => {
+                addToast({ title: 'Webhook test queued', message: webhook.url, variant: 'success' });
+              }).catch((error) => {
+                addToast({ title: 'Webhook test failed', message: normalizeApiError(error).message, variant: 'error' });
+              });
+            }}
+            loading={testWebhookMutation.isPending}
+          >
+            Test
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={() => {
+              void deleteWebhookMutation.mutateAsync(webhook.id).then(() => {
+                addToast({ title: 'Webhook deleted', message: webhook.url, variant: 'success' });
+              }).catch((error) => {
+                addToast({ title: 'Delete failed', message: normalizeApiError(error).message, variant: 'error' });
+              });
+            }}
+            loading={deleteWebhookMutation.isPending}
+          >
+            Delete
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  const usageColumns: Column<ApiUsageStats['daily_usage'][number]>[] = [
+    { key: 'date', header: 'Date', render: (row) => formatDate(row.date) },
+    { key: 'requests', header: 'Requests', render: (row) => row.requests.toLocaleString() },
+    { key: 'errors', header: 'Errors', render: (row) => row.errors.toLocaleString() },
+    { key: 'avg_response_time', header: 'Avg Response', render: (row) => `${row.avg_response_time.toFixed(2)} ms` },
+  ];
+
+  const rateLimitColumns: Column<{ endpoint: string; client_id: string; limit: number; remaining: number; reset_at: string }>[] = [
+    { key: 'endpoint', header: 'Endpoint', render: (row) => row.endpoint },
+    { key: 'client_id', header: 'Client', render: (row) => <code className="text-xs">{row.client_id}</code> },
+    { key: 'limit', header: 'Limit', render: (row) => row.limit.toLocaleString() },
+    { key: 'remaining', header: 'Remaining', render: (row) => row.remaining.toLocaleString() },
+    { key: 'reset_at', header: 'Resets', render: (row) => formatDate(row.reset_at) },
+  ];
+
+  const logColumns: Column<{ timestamp: string; level: string; message: string; request_id: string; ip_address: string; user_agent?: string }>[] = [
+    { key: 'timestamp', header: 'Time', render: (row) => formatDate(row.timestamp) },
+    { key: 'level', header: 'Level', render: (row) => <Badge variant={row.level === 'error' ? 'danger' : row.level === 'warn' ? 'warning' : 'info'}>{row.level}</Badge> },
+    { key: 'message', header: 'Message', render: (row) => row.message },
+    { key: 'request_id', header: 'Request ID', render: (row) => row.request_id },
+    { key: 'ip_address', header: 'Source', render: (row) => row.ip_address },
   ];
 
   const marketplaceColumns: Column<DeveloperMarketplaceApp>[] = [
@@ -214,37 +467,60 @@ export default function DeveloperPage() {
 
   const handleCreateApiKey = async () => {
     try {
-      const key = await createApiKeyMutation.mutateAsync({
-        name: apiKeyForm.name,
-        scopes: parseCsv(apiKeyForm.scopes),
-        expires_at: apiKeyForm.expires_at || undefined,
-      });
+      if (editingApiKeyId) {
+        await updateAppMutation.mutateAsync({
+          clientId: editingApiKeyId,
+          data: {
+            name: apiKeyForm.name,
+            scopes: parseCsv(apiKeyForm.scopes),
+            redirect_uris: [],
+          },
+        });
+      } else {
+        await createApiKeyMutation.mutateAsync({
+          name: apiKeyForm.name,
+          scopes: parseCsv(apiKeyForm.scopes),
+          expires_at: apiKeyForm.expires_at || undefined,
+        });
+      }
       addToast({
-        title: 'API key created',
-        message: `Client preview ${key.key_preview}…`,
+        title: editingApiKeyId ? 'API key updated' : 'API key created',
+        message: editingApiKeyId ? 'The developer app was updated successfully.' : 'The backend issued a new client preview.',
         variant: 'success',
       });
       setApiKeyForm({ name: '', scopes: 'read:inventory,read:sales', expires_at: '' });
+      setEditingApiKeyId(null);
     } catch (error) {
       addToast({
-        title: 'API key creation failed',
+        title: editingApiKeyId ? 'API key update failed' : 'API key creation failed',
         message: normalizeApiError(error).message,
         variant: 'error',
       });
     }
   };
-
   const handleCreateOauth = async () => {
     try {
-      const app = await createOauthMutation.mutateAsync({
-        name: oauthForm.name,
-        description: oauthForm.description || undefined,
-        redirect_uris: parseCsv(oauthForm.redirect_uris),
-        scopes: parseCsv(oauthForm.scopes),
-      });
+      if (editingOauthClientId) {
+        await updateAppMutation.mutateAsync({
+          clientId: editingOauthClientId,
+          data: {
+            name: oauthForm.name,
+            description: oauthForm.description || undefined,
+            redirect_uris: parseCsv(oauthForm.redirect_uris),
+            scopes: parseCsv(oauthForm.scopes),
+          },
+        });
+      } else {
+        await createOauthMutation.mutateAsync({
+          name: oauthForm.name,
+          description: oauthForm.description || undefined,
+          redirect_uris: parseCsv(oauthForm.redirect_uris),
+          scopes: parseCsv(oauthForm.scopes),
+        });
+      }
       addToast({
-        title: 'OAuth application created',
-        message: `Client ID ${app.client_id}`,
+        title: editingOauthClientId ? 'OAuth application updated' : 'OAuth application created',
+        message: editingOauthClientId ? 'The OAuth application was updated successfully.' : 'A new client ID was issued.',
         variant: 'success',
       });
       setOAuthForm({
@@ -253,15 +529,51 @@ export default function DeveloperPage() {
         redirect_uris: 'https://example.com/oauth/callback',
         scopes: 'read:inventory,read:sales',
       });
+      setEditingOauthClientId(null);
     } catch (error) {
       addToast({
-        title: 'OAuth app creation failed',
+        title: editingOauthClientId ? 'OAuth app update failed' : 'OAuth app creation failed',
         message: normalizeApiError(error).message,
         variant: 'error',
       });
     }
   };
 
+  const handleSaveWebhook = async () => {
+    try {
+      if (editingWebhookId) {
+        await updateWebhookMutation.mutateAsync({
+          webhookId: editingWebhookId,
+          data: {
+            url: webhookForm.url,
+            events: parseCsv(webhookForm.events),
+            secret: webhookForm.secret || undefined,
+          },
+        });
+      } else {
+        await createWebhookMutation.mutateAsync({
+          url: webhookForm.url,
+          events: parseCsv(webhookForm.events),
+          secret: webhookForm.secret || undefined,
+          name: webhookForm.name || undefined,
+        });
+      }
+
+      addToast({
+        title: editingWebhookId ? 'Webhook updated' : 'Webhook created',
+        message: 'The backend webhook configuration was saved successfully.',
+        variant: 'success',
+      });
+      setWebhookForm({ url: '', events: 'inventory.updated,orders.created', secret: '', name: '' });
+      setEditingWebhookId(null);
+    } catch (error) {
+      addToast({
+        title: editingWebhookId ? 'Webhook update failed' : 'Webhook creation failed',
+        message: normalizeApiError(error).message,
+        variant: 'error',
+      });
+    }
+  };
   const runExplorer = async (kind: 'inventory' | 'sales') => {
     try {
       const mutation = kind === 'inventory' ? inventoryExplorerMutation : salesExplorerMutation;
@@ -288,13 +600,21 @@ export default function DeveloperPage() {
     }
   };
 
-  const isLoading = apiKeysQuery.isLoading || oauthAppsQuery.isLoading || docsQuery.isLoading || marketplaceQuery.isLoading;
+  const isLoading =
+    apiKeysQuery.isLoading
+    || oauthAppsQuery.isLoading
+    || docsQuery.isLoading
+    || marketplaceQuery.isLoading
+    || webhooksQuery.isLoading
+    || usageQuery.isLoading
+    || rateLimitsQuery.isLoading
+    || apiLogsQuery.isLoading;
 
   return (
     <PageFrame title="Developer API" subtitle="Register developers, create credentials, browse the marketplace, and test OAuth-protected APIs.">
       <div className="border-b border-gray-200 mb-6">
         <nav className="-mb-px flex flex-wrap gap-6">
-          {(['onboarding', 'marketplace', 'api-keys', 'oauth', 'explorer', 'docs'] as DeveloperTab[]).map((tab) => (
+          {(['onboarding', 'marketplace', 'api-keys', 'oauth', 'webhooks', 'usage', 'limits', 'logs', 'explorer', 'docs'] as DeveloperTab[]).map((tab) => (
             <button
               key={tab}
               type="button"
@@ -371,16 +691,29 @@ export default function DeveloperPage() {
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Create API Key</CardTitle>
+              <CardTitle>{editingApiKeyId ? 'Edit API Key' : 'Create API Key'}</CardTitle>
             </CardHeader>
             <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Input label="Name" value={apiKeyForm.name} onChange={(event) => setApiKeyForm((current) => ({ ...current, name: event.target.value }))} />
               <Input label="Scopes (comma separated)" value={apiKeyForm.scopes} onChange={(event) => setApiKeyForm((current) => ({ ...current, scopes: event.target.value }))} />
               <Input label="Expires At (optional)" type="datetime-local" value={apiKeyForm.expires_at} onChange={(event) => setApiKeyForm((current) => ({ ...current, expires_at: event.target.value }))} />
               <div className="md:col-span-3">
-                <Button onClick={handleCreateApiKey} loading={createApiKeyMutation.isPending} disabled={!apiKeyForm.name}>
-                  Create API key
-                </Button>
+                <div className="flex flex-wrap gap-3">
+                  <Button onClick={handleCreateApiKey} loading={createApiKeyMutation.isPending || updateAppMutation.isPending} disabled={!apiKeyForm.name}>
+                    {editingApiKeyId ? 'Save API key' : 'Create API key'}
+                  </Button>
+                  {editingApiKeyId ? (
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        setEditingApiKeyId(null);
+                        setApiKeyForm({ name: '', scopes: 'read:inventory,read:sales', expires_at: '' });
+                      }}
+                    >
+                      Cancel edit
+                    </Button>
+                  ) : null}
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -404,7 +737,7 @@ export default function DeveloperPage() {
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Create OAuth Application</CardTitle>
+              <CardTitle>{editingOauthClientId ? 'Edit OAuth Application' : 'Create OAuth Application'}</CardTitle>
             </CardHeader>
             <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Input label="Application name" value={oauthForm.name} onChange={(event) => setOAuthForm((current) => ({ ...current, name: event.target.value }))} />
@@ -412,9 +745,27 @@ export default function DeveloperPage() {
               <Input label="Redirect URIs (comma separated)" value={oauthForm.redirect_uris} onChange={(event) => setOAuthForm((current) => ({ ...current, redirect_uris: event.target.value }))} />
               <Input label="Scopes (comma separated)" value={oauthForm.scopes} onChange={(event) => setOAuthForm((current) => ({ ...current, scopes: event.target.value }))} />
               <div className="md:col-span-2">
-                <Button onClick={handleCreateOauth} loading={createOauthMutation.isPending} disabled={!oauthForm.name || !oauthForm.redirect_uris}>
-                  Create OAuth application
-                </Button>
+                <div className="flex flex-wrap gap-3">
+                  <Button onClick={handleCreateOauth} loading={createOauthMutation.isPending || updateAppMutation.isPending} disabled={!oauthForm.name || !oauthForm.redirect_uris}>
+                    {editingOauthClientId ? 'Save OAuth application' : 'Create OAuth application'}
+                  </Button>
+                  {editingOauthClientId ? (
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        setEditingOauthClientId(null);
+                        setOAuthForm({
+                          name: '',
+                          description: '',
+                          redirect_uris: 'https://example.com/oauth/callback',
+                          scopes: 'read:inventory,read:sales',
+                        });
+                      }}
+                    >
+                      Cancel edit
+                    </Button>
+                  ) : null}
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -429,6 +780,154 @@ export default function DeveloperPage() {
               ) : (
                 <EmptyState title="No OAuth applications" body="Create an OAuth application to test delegated RetailIQ access." />
               )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {!isLoading && activeTab === 'webhooks' && (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>{editingWebhookId ? 'Edit Webhook' : 'Create Webhook'}</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input label="URL" value={webhookForm.url} onChange={(event) => setWebhookForm((current) => ({ ...current, url: event.target.value }))} />
+              <Input label="Events (comma separated)" value={webhookForm.events} onChange={(event) => setWebhookForm((current) => ({ ...current, events: event.target.value }))} />
+              <Input label="Secret (optional)" value={webhookForm.secret} onChange={(event) => setWebhookForm((current) => ({ ...current, secret: event.target.value }))} />
+              <Input label="Label" value={webhookForm.name} onChange={(event) => setWebhookForm((current) => ({ ...current, name: event.target.value }))} />
+              <div className="md:col-span-2">
+                <div className="flex flex-wrap gap-3">
+                  <Button onClick={handleSaveWebhook} loading={createWebhookMutation.isPending || updateWebhookMutation.isPending} disabled={!webhookForm.url || !webhookForm.events}>
+                    {editingWebhookId ? 'Save webhook' : 'Create webhook'}
+                  </Button>
+                  {editingWebhookId ? (
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        setEditingWebhookId(null);
+                        setWebhookForm({ url: '', events: 'inventory.updated,orders.created', secret: '', name: '' });
+                      }}
+                    >
+                      Cancel edit
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Configured Webhooks</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {webhooksQuery.data && webhooksQuery.data.length > 0 ? (
+                <DataTable columns={webhookColumns} data={webhooksQuery.data} />
+              ) : (
+                <EmptyState title="No webhooks configured" body="Create a webhook to connect your app to backend event delivery." />
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {!isLoading && activeTab === 'usage' && (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Usage Filters</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Input label="From date" type="date" value={usageFilters.from_date} onChange={(event) => setUsageFilters((current) => ({ ...current, from_date: event.target.value }))} />
+              <Input label="To date" type="date" value={usageFilters.to_date} onChange={(event) => setUsageFilters((current) => ({ ...current, to_date: event.target.value }))} />
+              <div className="flex items-end">
+                <Button variant="secondary" onClick={() => void usageQuery.refetch()}>Refresh usage</Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card><CardContent className="pt-6"><div className="text-sm text-gray-500">Total requests</div><div className="text-3xl font-semibold">{usageQuery.data?.total_requests?.toLocaleString() ?? 0}</div></CardContent></Card>
+            <Card><CardContent className="pt-6"><div className="text-sm text-gray-500">Total errors</div><div className="text-3xl font-semibold">{usageQuery.data?.total_errors?.toLocaleString() ?? 0}</div></CardContent></Card>
+            <Card><CardContent className="pt-6"><div className="text-sm text-gray-500">Avg response</div><div className="text-3xl font-semibold">{usageQuery.data?.avg_response_time?.toFixed(2) ?? '0.00'} ms</div></CardContent></Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Top Endpoints</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {usageQuery.data?.top_endpoints?.length ? (
+                <div className="space-y-3">
+                  {usageQuery.data.top_endpoints.map((endpoint) => (
+                    <div key={endpoint.path} className="flex items-center justify-between rounded-md border p-3">
+                      <code className="text-sm">{endpoint.path}</code>
+                      <Badge variant="info">{endpoint.requests.toLocaleString()} requests</Badge>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState title="No endpoint usage" body="The backend has not returned usage records for the selected period." />
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Daily Usage</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <DataTable columns={usageColumns} data={usageQuery.data?.daily_usage ?? []} emptyMessage="No daily usage data returned by the backend." />
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {!isLoading && activeTab === 'limits' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Rate Limits</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <DataTable columns={rateLimitColumns} data={rateLimitsQuery.data ?? []} emptyMessage="No rate-limit records returned by the backend." />
+          </CardContent>
+        </Card>
+      )}
+
+      {!isLoading && activeTab === 'logs' && (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Log Filters</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Level</label>
+                <select
+                  value={logFilters.level}
+                  onChange={(event) => setLogFilters((current) => ({ ...current, level: event.target.value as typeof logFilters.level }))}
+                  className="h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm"
+                >
+                  <option value="">All</option>
+                  <option value="error">Error</option>
+                  <option value="warn">Warn</option>
+                  <option value="info">Info</option>
+                </select>
+              </div>
+              <Input label="Limit" type="number" value={logFilters.limit} onChange={(event) => setLogFilters((current) => ({ ...current, limit: event.target.value }))} />
+              <div className="flex items-end">
+                <Button variant="secondary" onClick={() => void apiLogsQuery.refetch()}>Refresh logs</Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>API Logs</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <DataTable columns={logColumns} data={apiLogsQuery.data?.logs ?? []} emptyMessage="No API logs returned by the backend." />
             </CardContent>
           </Card>
         </div>
@@ -521,3 +1020,4 @@ export default function DeveloperPage() {
     </PageFrame>
   );
 }
+

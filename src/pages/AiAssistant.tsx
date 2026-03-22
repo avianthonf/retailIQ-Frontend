@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { normalizeApiError } from '@/utils/errors';
 import { useNlpQueryMutation, useAiAssistantMutation, useAiRecommendMutation } from '@/hooks/nlp';
+import { useAiV2QueryMutation, useAiV2RecommendMutation } from '@/hooks/aiTools';
 import type { NlpResponse } from '@/types/models';
 import type { AiRecommendation } from '@/types/models';
 
@@ -19,10 +20,14 @@ export default function AiAssistantPage() {
   const [queryText, setQueryText] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [recommendations, setRecommendations] = useState<AiRecommendation[]>([]);
+  const [v2Response, setV2Response] = useState<string>('');
+  const [v2Recommendations, setV2Recommendations] = useState<AiRecommendation[]>([]);
 
   const nlpMutation = useNlpQueryMutation();
   const aiMutation = useAiAssistantMutation();
   const recMutation = useAiRecommendMutation();
+  const v2QueryMutation = useAiV2QueryMutation();
+  const v2RecMutation = useAiV2RecommendMutation();
 
   const quickQueries = [
     { label: 'Revenue', query: "What's my revenue today?" },
@@ -65,6 +70,22 @@ export default function AiAssistantPage() {
   const handleGetRecommendations = () => {
     recMutation.mutate({}, {
       onSuccess: (data) => setRecommendations(data.recommendations ?? []),
+    });
+  };
+
+  const handleSendV2 = () => {
+    if (!queryText.trim()) return;
+    const q = queryText.trim();
+    v2QueryMutation.mutate({ query: q }, {
+      onSuccess: (data) => {
+        setV2Response(data.response || 'No response.');
+      },
+    });
+  };
+
+  const handleGetV2Recommendations = () => {
+    v2RecMutation.mutate({}, {
+      onSuccess: (data) => setV2Recommendations(data.recommendations ?? []),
     });
   };
 
@@ -122,6 +143,9 @@ export default function AiAssistantPage() {
             <Button onClick={handleSend} disabled={nlpMutation.isPending || aiMutation.isPending}>
               {nlpMutation.isPending || aiMutation.isPending ? '...' : 'Send'}
             </Button>
+            <Button variant="secondary" onClick={handleSendV2} disabled={v2QueryMutation.isPending}>
+              {v2QueryMutation.isPending ? '...' : 'Send v2'}
+            </Button>
           </div>
         </div>
 
@@ -150,6 +174,39 @@ export default function AiAssistantPage() {
                   ))}
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          <Card className="mt-6">
+            <CardHeader>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <CardTitle>AI v2 Explorer</CardTitle>
+                <Button variant="secondary" onClick={handleGetV2Recommendations} disabled={v2RecMutation.isPending}>
+                  {v2RecMutation.isPending ? '...' : 'Refresh'}
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <p className="muted">This panel exercises the backend v2 AI routes directly so the contract stays visible in production.</p>
+              <div className="mt-3 rounded-md border border-gray-200 p-3">
+                <div className="text-sm font-medium">Latest v2 response</div>
+                <div className="mt-2 text-sm">{v2Response || 'No v2 query yet.'}</div>
+              </div>
+              <div className="mt-4">
+                {v2Recommendations.length === 0 ? (
+                  <p className="muted">No v2 recommendations loaded yet.</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    {v2Recommendations.map((rec, i) => (
+                      <div key={i} style={{ padding: '0.5rem', background: '#f9fafb', borderRadius: '0.375rem' }}>
+                        <strong>{rec.product_name}</strong>
+                        <p className="muted" style={{ margin: '0.25rem 0 0', fontSize: '0.85rem' }}>{rec.reason}</p>
+                        <Badge variant="info" className="mt-1">Score: {rec.score.toFixed(2)}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         </div>

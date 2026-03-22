@@ -100,6 +100,19 @@ export interface DemandForecast {
   created_at: string;
 }
 
+export interface MarketRecommendation {
+  id: string;
+  type: 'PRICING' | 'STOCK' | 'MARKETING';
+  priority: 'LOW' | 'MEDIUM' | 'HIGH';
+  title: string;
+  description: string;
+  expected_impact: string;
+  effort_required: 'LOW' | 'MEDIUM' | 'HIGH';
+  due_date?: string;
+  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
+  created_at: string;
+}
+
 const nowIso = () => new Date().toISOString();
 
 const toSummaryList = (payload: unknown): Record<string, unknown>[] => {
@@ -342,27 +355,54 @@ export const marketIntelligenceApi = {
     };
   },
 
-  getCompetitors: async (_region?: string): Promise<CompetitorAnalysis[]> => [],
+  getCompetitors: async (region?: string): Promise<CompetitorAnalysis[]> => {
+    const response = await request<CompetitorAnalysis[]>({
+      url: `${MARKET_BASE}/competitors`,
+      method: 'GET',
+      params: region ? { region } : undefined,
+    });
 
-  getCompetitorDetail: async (_competitorId: string): Promise<CompetitorAnalysis> => {
-    throw new Error('Competitor data not available.');
+    return Array.isArray(response) ? response : [];
   },
 
-  getDemandForecasts: async (_params?: {
+  getCompetitorDetail: async (competitorId: string): Promise<CompetitorAnalysis> => {
+    const response = await request<CompetitorAnalysis>({
+      url: `${MARKET_BASE}/competitors/${competitorId}`,
+      method: 'GET',
+    });
+
+    return response;
+  },
+
+  getDemandForecasts: async (params?: {
     product_id?: string;
     category?: string;
     region?: string;
     from_period?: string;
     to_period?: string;
-  }): Promise<DemandForecast[]> => [],
+  }): Promise<DemandForecast[]> => {
+    const response = await request<DemandForecast[]>({
+      url: `${MARKET_BASE}/forecasts`,
+      method: 'GET',
+      params,
+    });
 
-  generateForecast: async (_data: {
+    return Array.isArray(response) ? response : [];
+  },
+
+  generateForecast: async (data: {
     product_id: string;
     forecast_period: string;
     factors?: string[];
-  }): Promise<DemandForecast> => {
-    throw new Error('Demand forecasting is not available.');
-  },
+  }): Promise<DemandForecast> => request<DemandForecast>({
+    url: `${MARKET_BASE}/forecasts/generate`,
+    method: 'POST',
+    data: {
+      product_id: data.product_id,
+      forecast_period: data.forecast_period,
+      factors: data.factors ?? [],
+    },
+  }),
 
   getMarketTrends: async (_params?: {
     region?: string;
@@ -389,23 +429,20 @@ export const marketIntelligenceApi = {
     competitor_activity: [],
   }),
 
-  getRecommendations: async (_params?: {
+  getRecommendations: async (params?: {
     product_id?: string;
     category?: string;
     region?: string;
     type?: 'PRICING' | 'STOCK' | 'MARKETING';
-  }): Promise<{
-    id: string;
-    type: 'PRICING' | 'STOCK' | 'MARKETING';
-    priority: 'LOW' | 'MEDIUM' | 'HIGH';
-    title: string;
-    description: string;
-    expected_impact: string;
-    effort_required: 'LOW' | 'MEDIUM' | 'HIGH';
-    due_date?: string;
-    status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
-    created_at: string;
-  }[]> => [],
+  }): Promise<MarketRecommendation[]> => {
+    const response = await request<MarketRecommendation[]>({
+      url: `${MARKET_BASE}/recommendations`,
+      method: 'GET',
+      params,
+    });
+
+    return Array.isArray(response) ? response : [];
+  },
 
   exportSignals: async (_params?: {
     format?: 'csv' | 'excel' | 'json';
