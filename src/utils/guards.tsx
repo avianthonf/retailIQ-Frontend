@@ -41,7 +41,7 @@ export function PublicOnlyGuard() {
 
   // OTP verification can be the next step after registration even if a stale
   // persisted session briefly marks the user as authenticated.
-  if (location.pathname === '/verify-otp' || location.pathname === '/auth/otp') {
+  if (location.pathname === '/verify-otp') {
     return <Outlet />;
   }
 

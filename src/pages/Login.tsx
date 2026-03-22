@@ -77,6 +77,11 @@ export default function LoginPage() {
         return;
       }
 
+      if (apiError.status === 404) {
+        setServerMessage(apiError.message || 'No account found for that email. Please register first.');
+        return;
+      }
+
       if (apiError.status === 422) {
         extractFieldErrors(apiError.fields, setError);
         return;

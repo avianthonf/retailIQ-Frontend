@@ -48,7 +48,7 @@ export default function RegisterPage() {
 
       // Fallback to a hard navigation if the router does not transition.
       window.setTimeout(() => {
-        if (window.location.pathname !== '/auth/otp' && window.location.pathname !== '/verify-otp') {
+        if (window.location.pathname !== '/verify-otp') {
           window.location.assign(otpPath);
         }
       }, 0);
