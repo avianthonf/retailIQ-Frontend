@@ -21,7 +21,7 @@ export default function ForgotPasswordPage() {
   const [serverMessage, setServerMessage] = useState<string | null>(null);
   const { register, handleSubmit, setError, formState: { errors, isSubmitting } } = useForm<ForgotPasswordFormValues>({
     resolver: zodResolver(forgotPasswordSchema),
-    defaultValues: { mobile_number: '' },
+    defaultValues: { email: '' },
   });
 
   const onSubmit = handleSubmit(async (values) => {
@@ -45,12 +45,12 @@ export default function ForgotPasswordPage() {
   });
 
   return (
-    <AuthShell title="Forgot password" subtitle="Request a reset token for your mobile number.">
+    <AuthShell title="Forgot password" subtitle="Request a reset token for your email address.">
       <form className="stack" onSubmit={onSubmit} noValidate>
         <label className="field">
-          <span>Mobile number</span>
-          <input className="input" type="tel" autoComplete="tel" {...register('mobile_number')} />
-          {errors.mobile_number ? <span className="muted">{errors.mobile_number.message}</span> : null}
+          <span>Email address</span>
+          <input className="input" type="email" autoComplete="email" {...register('email')} />
+          {errors.email ? <span className="muted">{errors.email.message}</span> : null}
         </label>
         {serverMessage ? <div className="muted">{serverMessage}</div> : null}
         <div className="button-row">

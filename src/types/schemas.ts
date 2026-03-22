@@ -7,8 +7,7 @@ import { z } from 'zod';
 
 /** Oracle sections 12.2 and 12.3 */
 export const loginSchema = z.object({
-  mobile_number: z.string().min(1, 'Mobile number is required'),
-  password: z.string().min(1, 'Password is required'),
+  email: z.string().email('Enter a valid email address'),
 });
 export type LoginFormValues = z.infer<typeof loginSchema>;
 
@@ -18,28 +17,28 @@ export const registerSchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters'),
   full_name: z.string().min(1, 'Full name is required'),
   store_name: z.string().min(1, 'Store name is required'),
-  email: z.string().email('Enter a valid email address').optional().or(z.literal('')),
+  email: z.string().email('Enter a valid email address'),
   role: z.enum(['owner', 'staff']).optional(),
 });
 export type RegisterFormValues = z.infer<typeof registerSchema>;
 
 /** Oracle sections 12.2 and 12.3 */
 export const verifyOtpSchema = z.object({
-  mobile_number: z.string().min(1, 'Mobile number is required'),
+  email: z.string().email('Enter a valid email address'),
   otp: z.string().min(1, 'OTP is required'),
 });
 export type VerifyOtpFormValues = z.infer<typeof verifyOtpSchema>;
 
 /** Oracle sections 12.2 and 12.3 */
 export const resendOtpSchema = z.object({
-  contact: z.string().min(1, 'Contact is required'),
+  email: z.string().email('Enter a valid email address'),
   purpose: z.string().optional(),
 });
 export type ResendOtpFormValues = z.infer<typeof resendOtpSchema>;
 
 /** Oracle sections 12.2 and 12.3 */
 export const forgotPasswordSchema = z.object({
-  mobile_number: z.string().min(1, 'Mobile number is required'),
+  email: z.string().email('Enter a valid email address'),
 });
 export type ForgotPasswordFormValues = z.infer<typeof forgotPasswordSchema>;
 

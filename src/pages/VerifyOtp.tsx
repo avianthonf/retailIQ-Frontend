@@ -19,16 +19,17 @@ export default function VerifyOtpPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const locationState = location.state as { mobile_number?: string } | null;
-  const mobileNumber = locationState?.mobile_number ?? searchParams.get('mobile_number') ?? '';
+  const locationState = location.state as { email?: string; notice?: string } | null;
+  const email = locationState?.email ?? searchParams.get('email') ?? '';
   const redirect = searchParams.get('redirect') ?? '/dashboard';
   const addToast = uiStore((state) => state.addToast);
   const verifyOtpMutation = useVerifyOtpMutation();
   const resendOtpMutation = useResendOtpMutation();
+  const [noticeMessage, setNoticeMessage] = useState<string | null>(locationState?.notice ?? null);
   const [serverMessage, setServerMessage] = useState<string | null>(null);
   const { register, handleSubmit, setError, formState: { errors, isSubmitting } } = useForm<VerifyOtpFormValues>({
     resolver: zodResolver(verifyOtpSchema),
-    defaultValues: { mobile_number: mobileNumber, otp: '' },
+    defaultValues: { email, otp: '' },
   });
 
   const onSubmit = handleSubmit(async (values) => {
@@ -42,6 +43,7 @@ export default function VerifyOtpPage() {
         role: result.role,
         store_id: result.store_id,
       });
+      setNoticeMessage(null);
       addToast({ title: 'Account verified', message: 'OTP verification succeeded.', variant: 'success' });
       navigate(redirect, { replace: true });
     } catch (error) {
@@ -61,8 +63,15 @@ export default function VerifyOtpPage() {
   });
 
   const resendOtp = async () => {
+    if (!email) {
+      setServerMessage('Enter your email address before requesting a new OTP.');
+      return;
+    }
+
+    setServerMessage(null);
     try {
-      const result = await resendOtpMutation.mutateAsync({ contact: mobileNumber || '' });
+      const result = await resendOtpMutation.mutateAsync({ email: email || '' });
+      setNoticeMessage(null);
       addToast({ title: 'OTP resent', message: `Try again in ${result.resend_after}s.`, variant: 'info' });
     } catch (error) {
       setServerMessage(normalizeApiError(error).message);
@@ -70,13 +79,14 @@ export default function VerifyOtpPage() {
   };
 
   return (
-    <AuthShell title="Verify your OTP" subtitle="Enter the code sent to your mobile number to activate the account.">
+    <AuthShell title="Verify your email OTP" subtitle="Enter the code sent to your email address to activate or sign in.">
       <form className="stack" onSubmit={onSubmit} noValidate>
         <label className="field">
-          <span>Mobile number</span>
-          <input className="input" type="tel" autoComplete="tel" {...register('mobile_number')} />
-          {errors.mobile_number ? <span className="muted">{errors.mobile_number.message}</span> : null}
+          <span>Email address</span>
+          <input className="input" type="email" autoComplete="email" {...register('email')} />
+          {errors.email ? <span className="muted">{errors.email.message}</span> : null}
         </label>
+        {noticeMessage ? <div className="muted">{noticeMessage}</div> : null}
         <label className="field">
           <span>OTP</span>
           <input className="input" inputMode="numeric" autoComplete="one-time-code" {...register('otp')} />
@@ -87,7 +97,7 @@ export default function VerifyOtpPage() {
           <button className="button" type="submit" disabled={isSubmitting || verifyOtpMutation.isPending}>
             {isSubmitting || verifyOtpMutation.isPending ? 'Verifying…' : 'Verify OTP'}
           </button>
-          <button className="button button--secondary" type="button" onClick={resendOtp} disabled={resendOtpMutation.isPending}>
+          <button className="button button--secondary" type="button" onClick={resendOtp} disabled={resendOtpMutation.isPending || !email}>
             Resend OTP
           </button>
           <button className="button button--ghost" type="button" onClick={() => navigate('/login')}>

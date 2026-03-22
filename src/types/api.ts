@@ -77,8 +77,9 @@ export interface StandardEnvelope<T> {
 }
 
 export interface LoginRequest {
-  mobile_number: string;
-  password: string;
+  email: string;
+  mobile_number?: string;
+  password?: string;
 }
 
 export interface LoginResponse {
@@ -89,6 +90,10 @@ export interface LoginResponse {
   store_id?: number | null;
   mfa_required?: boolean;
   message?: string;
+  email?: string;
+  otp_sent?: boolean;
+  otp_ttl?: number;
+  resend_after?: number;
 }
 
 export interface RegisterRequest {
@@ -96,7 +101,7 @@ export interface RegisterRequest {
   password: string;
   full_name: string;
   store_name: string;
-  email?: string | null;
+  email: string;
   role?: string;
 }
 
@@ -104,28 +109,32 @@ export interface RegisterResponse {
   message: string;
   user_id?: number;
   store_id?: number | null;
+  email?: string;
 }
 
 export interface VerifyOtpRequest {
-  mobile_number: string;
+  email: string;
   otp: string;
 }
 
 export type VerifyOtpResponse = AuthTokens;
 
 export interface ResendOtpRequest {
-  contact: string;
+  email: string;
   purpose?: string;
 }
 
 export interface ResendOtpResponse {
   message: string;
+  email?: string;
+  contact?: string;
   otp_ttl: number;
   resend_after: number;
 }
 
 export interface ForgotPasswordRequest {
-  mobile_number: string;
+  email: string;
+  mobile_number?: string;
 }
 
 export interface ForgotPasswordResponse {

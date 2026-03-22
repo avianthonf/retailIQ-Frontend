@@ -405,6 +405,7 @@ export interface EInvoice {
   invoice_id: string;
   transaction_id: string;
   country_code: string;
+  invoice_format: string;
   invoice_number: string | null;
   authority_ref: string | null;
   status: EInvoiceStatus;

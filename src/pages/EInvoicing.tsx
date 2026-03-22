@@ -85,7 +85,7 @@ export default function EInvoicingPage() {
                     <span className="muted">Status:</span>
                     <Badge variant={getStatusVariant(statusQuery.data.status)}>{statusQuery.data.status}</Badge>
                   </div>
-                  <div><span className="muted">Invoice ID: </span>{statusQuery.data.invoice_id}</div>
+                  <div><span className="muted">Invoice ID: </span>{statusQuery.data.invoice_id ?? activeInvoiceId}</div>
                   <div><span className="muted">Transaction: </span>{statusQuery.data.transaction_id}</div>
                   <div><span className="muted">Country: </span>{statusQuery.data.country_code}</div>
                   {statusQuery.data.invoice_number && <div><span className="muted">Invoice #: </span>{statusQuery.data.invoice_number}</div>}

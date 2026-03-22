@@ -15,6 +15,8 @@ import { extractFieldErrors } from '@/utils/errors';
 import { uiStore } from '@/stores/uiStore';
 import { clearSession } from '@/utils/session';
 
+const OTP_DELIVERY_RECOVERY_MESSAGE = 'We could not send the verification email right now. Please try again from the next screen.';
+
 export default function RegisterPage() {
   const navigate = useNavigate();
   const addToast = uiStore((state) => state.addToast);
@@ -36,12 +38,12 @@ export default function RegisterPage() {
     setServerMessage(null);
     try {
       const result = await registerMutation.mutateAsync(values);
-      const otpPath = `/auth/otp?mobile_number=${encodeURIComponent(values.mobile_number)}`;
+      const otpPath = `/verify-otp?email=${encodeURIComponent(values.email)}&redirect=${encodeURIComponent('/dashboard')}`;
       clearSession();
       addToast({ title: 'Registration started', message: result.message, variant: 'success' });
       navigate(otpPath, {
         replace: true,
-        state: { mobile_number: values.mobile_number },
+        state: { email: values.email },
       });
 
       // Fallback to a hard navigation if the router does not transition.
@@ -52,6 +54,24 @@ export default function RegisterPage() {
       }, 0);
     } catch (error) {
       const apiError = normalizeApiError(error);
+      if (apiError.status === 503) {
+        const otpPath = `/verify-otp?email=${encodeURIComponent(values.email)}&redirect=${encodeURIComponent('/dashboard')}`;
+        clearSession();
+        addToast({
+          title: 'Account created',
+          message: OTP_DELIVERY_RECOVERY_MESSAGE,
+          variant: 'warning',
+        });
+        navigate(otpPath, {
+          replace: true,
+          state: {
+            email: values.email,
+            notice: OTP_DELIVERY_RECOVERY_MESSAGE,
+          },
+        });
+        return;
+      }
+
       if (apiError.status === 422) {
         if (apiError.fields) {
           extractFieldErrors(apiError.fields, setError);
@@ -67,7 +87,7 @@ export default function RegisterPage() {
   });
 
   return (
-    <AuthShell title="Create your RetailIQ account" subtitle="Set up a store, then verify your mobile number to continue.">
+    <AuthShell title="Create your RetailIQ account" subtitle="Set up a store, then verify your email to continue.">
       <form className="stack" onSubmit={onSubmit} noValidate>
         <label className="field">
           <span>Full name</span>
