@@ -19,8 +19,8 @@ export default function VerifyOtpPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const locationState = location.state as { mobile_number?: string } | null;
-  const mobileNumber = locationState?.mobile_number ?? searchParams.get('mobile_number') ?? '';
+  const locationState = location.state as { email?: string } | null;
+  const email = locationState?.email ?? searchParams.get('email') ?? '';
   const redirect = searchParams.get('redirect') ?? '/dashboard';
   const addToast = uiStore((state) => state.addToast);
   const verifyOtpMutation = useVerifyOtpMutation();
@@ -28,7 +28,7 @@ export default function VerifyOtpPage() {
   const [serverMessage, setServerMessage] = useState<string | null>(null);
   const { register, handleSubmit, setError, formState: { errors, isSubmitting } } = useForm<VerifyOtpFormValues>({
     resolver: zodResolver(verifyOtpSchema),
-    defaultValues: { mobile_number: mobileNumber, otp: '' },
+    defaultValues: { email, otp: '' },
   });
 
   const onSubmit = handleSubmit(async (values) => {
@@ -62,7 +62,7 @@ export default function VerifyOtpPage() {
 
   const resendOtp = async () => {
     try {
-      const result = await resendOtpMutation.mutateAsync({ contact: mobileNumber || '' });
+      const result = await resendOtpMutation.mutateAsync({ email: email || '' });
       addToast({ title: 'OTP resent', message: `Try again in ${result.resend_after}s.`, variant: 'info' });
     } catch (error) {
       setServerMessage(normalizeApiError(error).message);
@@ -70,12 +70,12 @@ export default function VerifyOtpPage() {
   };
 
   return (
-    <AuthShell title="Verify your OTP" subtitle="Enter the code sent to your mobile number to activate the account.">
+    <AuthShell title="Verify your email OTP" subtitle="Enter the code sent to your email address to activate or sign in.">
       <form className="stack" onSubmit={onSubmit} noValidate>
         <label className="field">
-          <span>Mobile number</span>
-          <input className="input" type="tel" autoComplete="tel" {...register('mobile_number')} />
-          {errors.mobile_number ? <span className="muted">{errors.mobile_number.message}</span> : null}
+          <span>Email address</span>
+          <input className="input" type="email" autoComplete="email" {...register('email')} />
+          {errors.email ? <span className="muted">{errors.email.message}</span> : null}
         </label>
         <label className="field">
           <span>OTP</span>

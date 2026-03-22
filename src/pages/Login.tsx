@@ -24,8 +24,7 @@ export default function LoginPage() {
   const { register, handleSubmit, setError, formState: { errors, isSubmitting } } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      mobile_number: '',
-      password: '',
+      email: '',
     },
   });
 
@@ -46,13 +45,17 @@ export default function LoginPage() {
         return;
       }
 
-      if (result.mfa_required) {
-        addToast({ title: 'MFA required', message: result.message ?? 'Enter your MFA code to continue.', variant: 'info' });
-        navigate(`/mfa-verify?redirect=${encodeURIComponent(searchParams.get('redirect') || '/dashboard')}`, { replace: true });
+      if (result.message) {
+        const redirect = searchParams.get('redirect') || '/dashboard';
+        addToast({ title: 'OTP sent', message: result.message, variant: 'success' });
+        navigate(`/verify-otp?email=${encodeURIComponent(values.email)}&redirect=${encodeURIComponent(redirect)}`, {
+          replace: true,
+          state: { email: values.email },
+        });
         return;
       }
 
-      setServerMessage(result.message ?? 'Unable to sign in.');
+      setServerMessage('Unable to sign in.');
     } catch (error) {
       const apiError = normalizeApiError(error);
       if (apiError.status === 422) {
@@ -70,26 +73,18 @@ export default function LoginPage() {
   });
 
   return (
-    <AuthShell title="RetailIQ" subtitle="Sign in to your merchant or staff workspace.">
+    <AuthShell title="RetailIQ" subtitle="Sign in with your email address. We will send a one-time code.">
       <form className="stack" onSubmit={onSubmit} noValidate>
         <label className="field">
-          <span>Mobile number</span>
-          <input className="input" type="tel" autoComplete="tel" {...register('mobile_number')} />
-          {errors.mobile_number ? <span className="muted">{errors.mobile_number.message}</span> : null}
-        </label>
-        <label className="field">
-          <span>Password</span>
-          <input className="input" type="password" autoComplete="current-password" {...register('password')} />
-          {errors.password ? <span className="muted">{errors.password.message}</span> : null}
+          <span>Email address</span>
+          <input className="input" type="email" autoComplete="email" {...register('email')} />
+          {errors.email ? <span className="muted">{errors.email.message}</span> : null}
         </label>
         {errors.root ? <div className="muted">{errors.root.message}</div> : null}
         {serverMessage ? <div className="muted">{serverMessage}</div> : null}
         <div className="button-row">
           <button className="button" type="submit" disabled={isSubmitting || loginMutation.isPending}>
-            {isSubmitting || loginMutation.isPending ? 'Signing in…' : 'Sign in'}
-          </button>
-          <button className="button button--ghost" type="button" onClick={() => navigate('/forgot-password')}>
-            Forgot password
+            {isSubmitting || loginMutation.isPending ? 'Sending code…' : 'Send OTP'}
           </button>
         </div>
         <p className="muted">

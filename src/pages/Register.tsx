@@ -36,12 +36,12 @@ export default function RegisterPage() {
     setServerMessage(null);
     try {
       const result = await registerMutation.mutateAsync(values);
-      const otpPath = `/auth/otp?mobile_number=${encodeURIComponent(values.mobile_number)}`;
+      const otpPath = `/verify-otp?email=${encodeURIComponent(values.email)}&redirect=${encodeURIComponent('/dashboard')}`;
       clearSession();
       addToast({ title: 'Registration started', message: result.message, variant: 'success' });
       navigate(otpPath, {
         replace: true,
-        state: { mobile_number: values.mobile_number },
+        state: { email: values.email },
       });
 
       // Fallback to a hard navigation if the router does not transition.
@@ -67,7 +67,7 @@ export default function RegisterPage() {
   });
 
   return (
-    <AuthShell title="Create your RetailIQ account" subtitle="Set up a store, then verify your mobile number to continue.">
+    <AuthShell title="Create your RetailIQ account" subtitle="Set up a store, then verify your email to continue.">
       <form className="stack" onSubmit={onSubmit} noValidate>
         <label className="field">
           <span>Full name</span>
