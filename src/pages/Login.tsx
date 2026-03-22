@@ -23,10 +23,11 @@ export default function LoginPage() {
   const addToast = uiStore((state) => state.addToast);
   const loginMutation = useLoginMutation();
   const [serverMessage, setServerMessage] = useState<string | null>(null);
+  const email = searchParams.get('email') || '';
   const { register, handleSubmit, setError, formState: { errors, isSubmitting } } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: '',
+      email,
     },
   });
 

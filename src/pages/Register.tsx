@@ -76,6 +76,19 @@ export default function RegisterPage() {
       }
 
       if (apiError.status === 422) {
+        if (apiError.code === 'DUPLICATE_EMAIL' || apiError.code === 'DUPLICATE_MOBILE') {
+          addToast({
+            title: 'Account already exists',
+            message: 'Sign in to send a fresh OTP for this account.',
+            variant: 'info',
+          });
+          navigate(`/login?email=${encodeURIComponent(values.email)}&redirect=${encodeURIComponent(redirect)}`, {
+            replace: true,
+            state: { email: values.email, redirect },
+          });
+          return;
+        }
+
         if (apiError.fields) {
           extractFieldErrors(apiError.fields, setError);
           return;

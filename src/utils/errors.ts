@@ -53,6 +53,26 @@ const extractFields = (payload: unknown): Record<string, string> | undefined => 
   );
 };
 
+const extractCode = (payload: unknown): string | undefined => {
+  if (!payload || typeof payload !== 'object') {
+    return undefined;
+  }
+
+  const candidate = payload as Record<string, unknown>;
+  if (typeof candidate.code === 'string') {
+    return candidate.code;
+  }
+
+  if (candidate.error && typeof candidate.error === 'object') {
+    const nested = candidate.error as Record<string, unknown>;
+    if (typeof nested.code === 'string') {
+      return nested.code;
+    }
+  }
+
+  return undefined;
+};
+
 const extractMessage = (payload: unknown, fallback = 'Request failed.') => {
   if (typeof payload === 'string') {
     return payload;
@@ -113,6 +133,7 @@ export function normalizeApiError(error: unknown): ApiError {
     return {
       message: extractMessage(payload, axiosError.message || 'Request failed.'),
       status: response?.status ?? axiosError.status,
+      code: extractCode(payload),
       fields: extractFields(payload),
       correlationId: correlationId ? String(correlationId) : undefined,
     };
@@ -124,6 +145,7 @@ export function normalizeApiError(error: unknown): ApiError {
     return {
       message: extractMessage(candidate),
       status: typeof candidate.status === 'number' ? candidate.status : undefined,
+      code: extractCode(candidate),
       fields: rawFields && typeof rawFields === 'object' ? Object.fromEntries(Object.entries(rawFields as Record<string, unknown>).map(([key, value]) => [key, String(value)])) : undefined,
       correlationId: typeof candidate.correlationId === 'string' ? candidate.correlationId : undefined,
     };

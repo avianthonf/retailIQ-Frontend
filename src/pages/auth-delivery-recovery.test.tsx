@@ -119,4 +119,34 @@ describe('verification email recovery', () => {
     expect(screen.getByRole('button', { name: /create account/i })).toBeTruthy();
     expect(mocks.addToast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'info' }));
   });
+
+  it('redirects duplicate registrations into login with the email preserved', async () => {
+    mocks.registerMutateAsync.mockRejectedValue({
+      status: 422,
+      code: 'DUPLICATE_EMAIL',
+      message: 'Email already registered',
+    });
+
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter initialEntries={['/register?redirect=%2Fdashboard']}>
+        <Routes>
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/login" element={<LoginPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.type(screen.getByLabelText(/full name/i), 'Grace Hopper');
+    await user.type(screen.getByLabelText(/mobile number/i), '9999999998');
+    await user.type(screen.getByLabelText(/^email$/i), 'grace@example.com');
+    await user.type(screen.getByLabelText(/store name/i), 'Grace Store');
+    await user.type(screen.getByLabelText(/^password$/i), 'password123');
+    await user.click(screen.getByRole('button', { name: /create account/i }));
+
+    expect(await screen.findByDisplayValue('grace@example.com')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /send otp/i })).toBeTruthy();
+    expect(mocks.addToast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'info' }));
+  });
 });

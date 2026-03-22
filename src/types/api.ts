@@ -59,6 +59,7 @@ import type {
 export interface ApiError {
   message: string;
   status: number | undefined;
+  code?: string;
   fields?: Record<string, string>;
   correlationId?: string;
 }
