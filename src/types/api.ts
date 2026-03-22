@@ -35,7 +35,6 @@ import type {
   NlpResponse,
   OcrJob,
   OfflineSnapshot,
-  PaymentProvider,
   PriceHistoryEntry,
   PricingRules,
   PricingSuggestion,
@@ -443,26 +442,6 @@ export interface ReceiptDigitizationResponse {
   status?: string;
   response?: unknown;
   data?: unknown;
-}
-
-export interface ListPaymentProvidersRequest {
-  country_code?: string;
-}
-
-export interface ListPaymentProvidersResponse {
-  providers: PaymentProvider[];
-}
-
-export interface CreatePaymentIntentRequest {
-  transaction_id: string;
-  provider_code: string;
-}
-
-export interface CreatePaymentIntentResponse {
-  status?: string;
-  client_secret?: string;
-  intent_id?: string;
-  [key: string]: unknown;
 }
 
 export interface ListKycProvidersRequest {

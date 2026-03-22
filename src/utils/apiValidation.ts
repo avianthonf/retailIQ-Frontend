@@ -17,7 +17,6 @@ import * as marketIntelligenceApi from '@/api/marketIntelligence';
 import * as whatsappApi from '@/api/whatsapp';
 import * as developerApi from '@/api/developer';
 import * as chainApi from '@/api/chain';
-import * as paymentsApi from '@/api/payments';
 import * as transactionsApi from '@/api/transactions';
 import * as receiptsApi from '@/api/receipts';
 import * as kycApi from '@/api/kyc';
@@ -43,7 +42,6 @@ export function validateApiEndpoints() {
   validationResults.whatsapp = !!whatsappApi;
   validationResults.developer = !!developerApi;
   validationResults.chain = !!chainApi;
-  validationResults.payments = !!paymentsApi;
   validationResults.transactions = !!transactionsApi;
   validationResults.receipts = !!receiptsApi;
   validationResults.kyc = !!kycApi;

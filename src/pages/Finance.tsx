@@ -19,7 +19,6 @@ import {
   useKYCQuery,
   useLoanApplicationsQuery,
   useRefreshCreditScoreMutation,
-  useRepayCreditMutation,
   useSubmitKYCMutation,
   useTreasuryBalanceQuery,
   useTreasuryConfigQuery,
@@ -55,7 +54,6 @@ export default function FinancePage() {
     tenure_months: '12',
     purpose: '',
   });
-  const [repayAmount, setRepayAmount] = useState('');
   const [treasuryForm, setTreasuryForm] = useState({
     auto_transfer_enabled: false,
     daily_transfer_limit: '0',
@@ -74,7 +72,6 @@ export default function FinancePage() {
 
   const submitKycMutation = useSubmitKYCMutation();
   const refreshScoreMutation = useRefreshCreditScoreMutation();
-  const repayMutation = useRepayCreditMutation();
   const applyForLoanMutation = useApplyForLoanMutation();
   const disburseLoanMutation = useDisburseLoanMutation();
   const updateTreasuryConfigMutation = useUpdateTreasuryConfigMutation();
@@ -238,24 +235,6 @@ export default function FinancePage() {
     }
   };
 
-  const repayCredit = async () => {
-    try {
-      await repayMutation.mutateAsync(Number(repayAmount));
-      addToast({
-        title: 'Credit repayment recorded',
-        message: `Processed repayment of ${formatCurrency(Number(repayAmount))}.`,
-        variant: 'success',
-      });
-      setRepayAmount('');
-    } catch (error) {
-      addToast({
-        title: 'Repayment failed',
-        message: normalizeApiError(error).message,
-        variant: 'error',
-      });
-    }
-  };
-
   const applyForLoan = async () => {
     try {
       await applyForLoanMutation.mutateAsync({
@@ -404,14 +383,6 @@ export default function FinancePage() {
               <div><div className="text-sm text-gray-500">Available</div><div className="text-xl font-semibold">{formatCurrency(creditLedger?.available_credit ?? 0)}</div></div>
               <div><div className="text-sm text-gray-500">Limit</div><div className="text-xl font-semibold">{formatCurrency(creditLedger?.total_credit_limit ?? 0)}</div></div>
               <div><div className="text-sm text-gray-500">Pending Charges</div><div className="text-xl font-semibold">{formatCurrency(creditLedger?.pending_charges ?? 0)}</div></div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader><CardTitle>Repay Merchant Credit</CardTitle></CardHeader>
-            <CardContent className="flex flex-col md:flex-row gap-4 items-end">
-              <Input label="Repayment amount" type="number" value={repayAmount} onChange={(event) => setRepayAmount(event.target.value)} />
-              <Button onClick={() => void repayCredit()} loading={repayMutation.isPending} disabled={!repayAmount || Number(repayAmount) <= 0}>Process repayment</Button>
             </CardContent>
           </Card>
 

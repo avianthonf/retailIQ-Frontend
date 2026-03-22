@@ -85,18 +85,6 @@ export const useCreditTransactionsQuery = () => {
   });
 };
 
-export const useRepayCreditMutation = () => {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: (amount: number) => financeApi.financeApi.repayCredit(amount),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: financeKeys.creditLedger() });
-      queryClient.invalidateQueries({ queryKey: financeKeys.creditTransactions() });
-    },
-  });
-};
-
 // Loans
 export const useLoanProductsQuery = () => {
   return useQuery({
@@ -206,19 +194,5 @@ export const useTreasuryTransactionsQuery = () => {
     queryKey: financeKeys.treasuryTransactions(),
     queryFn: () => financeApi.financeApi.getTreasuryTransactions(),
     staleTime: 30000, // 30 seconds
-  });
-};
-
-export const useProcessPaymentMutation = () => {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: (data: { amount: number; method: string; reference?: string }) =>
-      financeApi.financeApi.processPayment(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: financeKeys.treasuryBalance() });
-      queryClient.invalidateQueries({ queryKey: financeKeys.treasuryTransactions() });
-      queryClient.invalidateQueries({ queryKey: financeKeys.creditLedger() });
-    },
   });
 };

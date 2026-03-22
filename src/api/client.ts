@@ -77,7 +77,6 @@ const shouldSkipRefresh = (config?: AxiosRequestConfig) => {
     '/api/v1/auth/mfa/setup',
     '/api/v1/auth/mfa/verify',
     '/api/v1/auth/refresh',
-    '/oauth/token',
   ].some((path) => url.includes(path));
 };
 

@@ -22,7 +22,6 @@ export const ReceiptsTemplatePage = lazy(() => import('@/pages/ReceiptsTemplate'
 export const ReceiptsQueuePage = lazy(() => import('@/pages/ReceiptsQueue'));
 export const VisionOcrUploadPage = lazy(() => import('@/pages/VisionOcrUpload'));
 export const VisionOcrReviewPage = lazy(() => import('@/pages/VisionOcrReview'));
-export const PaymentsPage = lazy(() => import('@/pages/Payments'));
 export const KycPage = lazy(() => import('@/pages/Kyc'));
 export const DeveloperPage = lazy(() => import('@/pages/Developer'));
 export const MarketplacePage = lazy(() => import('@/pages/Marketplace'));
@@ -40,8 +39,6 @@ export const FinancePage = lazy(() => import('@/pages/Finance'));
 export const ForbiddenPage = lazy(() => import('@/pages/Forbidden'));
 export const NotFoundPage = lazy(() => import('@/pages/NotFound'));
 export const ServerErrorPage = lazy(() => import('@/pages/ServerError'));
-export const OAuthCallbackPage = lazy(() => import('@/pages/OAuthCallback'));
-export const OAuthAuthorizePage = lazy(() => import('@/pages/OAuthAuthorize'));
 export const SupplierPage = lazy(() => import('@/pages/Suppliers'));
 export const SupplierDetailPage = lazy(() => import('@/pages/SupplierDetail'));
 export const PurchaseOrdersPage = lazy(() => import('@/pages/PurchaseOrders'));

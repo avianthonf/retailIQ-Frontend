@@ -206,12 +206,6 @@ export const shelfScanSchema = z.object({
 export type ShelfScanFormValues = z.infer<typeof shelfScanSchema>;
 
 /** Oracle sections 12.3 */
-export const paymentIntentSchema = z.object({
-  transaction_id: z.string().min(1, 'Transaction ID is required'),
-  provider_code: z.string().min(1, 'Provider code is required'),
-});
-export type PaymentIntentFormValues = z.infer<typeof paymentIntentSchema>;
-
 /** Oracle sections 12.3 */
 export const kycVerifySchema = z.object({
   provider_code: z.string().min(1, 'Provider code is required'),

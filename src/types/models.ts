@@ -13,7 +13,6 @@ export type OcrJobStatus = 'QUEUED' | 'PROCESSING' | 'REVIEW' | 'FAILED' | 'APPL
 export type PrintJobStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 export type LoyaltyTransactionType = 'EARN' | 'REDEEM' | 'EXPIRE' | 'ADJUST';
 export type CreditTransactionType = 'CREDIT' | 'DEBIT' | 'ADJUST';
-export type PaymentProviderType = 'UPI' | 'CARD' | 'WALLET' | 'NETBANKING' | 'BANK_TRANSFER';
 
 export interface CurrentUser {
   user_id: number;
@@ -139,13 +138,6 @@ export interface OcrJob {
   status: OcrJobStatus;
   error_message: string | null;
   items: OcrJobItem[];
-}
-
-export interface PaymentProvider {
-  code: string;
-  name: string;
-  type: PaymentProviderType;
-  supported_methods: string[];
 }
 
 export interface KycProvider {

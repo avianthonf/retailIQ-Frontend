@@ -29,7 +29,6 @@ const navItems: NavItem[] = [
   { label: 'Purchase Orders', to: '/purchase-orders' },
   { label: 'Receipts', to: '/receipts/template' },
   { label: 'Vision / OCR', to: '/vision/ocr' },
-  { label: 'Payments', to: '/payments' },
   { label: 'KYC', to: '/kyc' },
   { label: 'Developer', to: '/developer' },
   { label: 'Marketplace', to: '/marketplace' },

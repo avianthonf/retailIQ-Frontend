@@ -63,53 +63,11 @@ export interface ApiUsageStats {
   daily_usage: ApiUsage[];
 }
 
-export interface OAuthApplication {
-  client_id: string;
-  client_secret: string;
-  name: string;
-  description?: string;
-  redirect_uris: string[];
-  scopes: string[];
-  is_active: boolean;
-  created_at: string;
-  created_by: string;
-}
-
-export interface CreateOAuthApplicationRequest {
-  name: string;
-  description?: string;
-  redirect_uris: string[];
-  scopes: string[];
-}
-
-export interface OAuthToken {
-  access_token: string;
-  token_type: string;
-  expires_in: number;
-  scope: string;
-  refresh_token?: string;
-}
-
-export interface OAuthAuthorizationRequest {
-  client_id: string;
-  app_name: string;
-  description?: string;
-  redirect_uri: string;
-  scopes: string[];
-  state?: string;
-}
-
-export interface OAuthAuthorizationApproval {
-  redirect_url: string;
-  code: string;
-  state?: string;
-}
-
 export interface ApiDocumentation {
   version: string;
   base_url: string;
   authentication: {
-    type: 'api_key' | 'oauth';
+    type: 'api_key';
     description: string;
   };
   endpoints: {
@@ -140,7 +98,10 @@ interface RawDeveloperApp {
   scopes?: string[];
   status?: string;
   tier?: string;
+  rate_limit_rpm?: number;
   created_at?: string;
+  webhook_url?: string | null;
+  webhook_secret?: string | null;
 }
 
 interface RawWebhook {
@@ -179,18 +140,7 @@ const mapAppToApiKey = (app: RawDeveloperApp): ApiKey => ({
   key_preview: String(app.client_id ?? '').slice(0, 8),
   scopes: Array.isArray(app.scopes) ? app.scopes : [],
   is_active: (app.status ?? 'ACTIVE') === 'ACTIVE',
-  created_at: app.created_at ?? nowIso(),
-  created_by: 'current_user',
-});
-
-const mapAppToOAuth = (app: RawDeveloperApp): OAuthApplication => ({
-  client_id: String(app.client_id ?? ''),
-  client_secret: String(app.client_secret ?? ''),
-  name: app.name ?? 'Developer App',
-  description: app.description ?? (app.tier ? `Tier: ${app.tier}` : undefined),
-  redirect_uris: Array.isArray(app.redirect_uris) ? app.redirect_uris : [],
-  scopes: Array.isArray(app.scopes) ? app.scopes : [],
-  is_active: (app.status ?? 'ACTIVE') === 'ACTIVE',
+  expires_at: undefined,
   created_at: app.created_at ?? nowIso(),
   created_by: 'current_user',
 });
@@ -209,6 +159,18 @@ const mapWebhook = (webhook: RawWebhook): Webhook => ({
 const getDeveloperApps = () => request<RawDeveloperApp[]>({ url: `${DEVELOPER_BASE}/apps`, method: 'GET' });
 
 export const developerApi = {
+  registerDeveloper: async (data: { name: string; email: string; organization?: string }): Promise<{
+    id: string;
+    name: string;
+    email: string;
+    message: string;
+  }> =>
+    request<{ id: string; name: string; email: string; message: string }>({
+      url: `${DEVELOPER_BASE}/register`,
+      method: 'POST',
+      data,
+    }),
+
   getApiKeys: async (): Promise<ApiKey[]> => {
     const response = await getDeveloperApps();
     return Array.isArray(response)
@@ -242,6 +204,19 @@ export const developerApi = {
       created_at: nowIso(),
       created_by: 'current_user',
     };
+  },
+
+  updateApiKey: async (
+    keyId: string,
+    data: Partial<CreateApiKeyRequest> & { description?: string; status?: string },
+  ): Promise<ApiKey> => {
+    const response = await request<RawDeveloperApp>({
+      url: `${DEVELOPER_BASE}/apps/${keyId}`,
+      method: 'PATCH',
+      data,
+    });
+
+    return mapAppToApiKey(response);
   },
 
   deleteApiKey: async (keyId: string): Promise<void> => {
@@ -310,113 +285,20 @@ export const developerApi = {
       params,
     }),
 
-  getOAuthApplications: async (): Promise<OAuthApplication[]> => {
-    const response = await getDeveloperApps();
-    return Array.isArray(response)
-      ? response
-          .filter((app) => app.app_type === 'WEB' || app.app_type === 'MOBILE')
-          .map(mapAppToOAuth)
-      : [];
-  },
-
-  createOAuthApplication: async (data: CreateOAuthApplicationRequest): Promise<OAuthApplication> => {
-    const response = await request<RawDeveloperApp>({
-      url: `${DEVELOPER_BASE}/apps`,
-      method: 'POST',
-      data: {
-        name: data.name,
-        description: data.description,
-        app_type: 'WEB',
-        redirect_uris: data.redirect_uris,
-        scopes: data.scopes,
-      },
-    });
-
-    return {
-      client_id: String(response.client_id ?? ''),
-      client_secret: String(response.client_secret ?? ''),
-      name: response.name ?? data.name,
-      description: data.description,
-      redirect_uris: data.redirect_uris,
-      scopes: Array.isArray(response.scopes) ? response.scopes : data.scopes,
-      is_active: true,
-      created_at: nowIso(),
-      created_by: 'current_user',
-    };
-  },
-
-  updateOAuthApplication: async (clientId: string, data: Partial<CreateOAuthApplicationRequest>): Promise<OAuthApplication> => {
-    const response = await request<RawDeveloperApp>({
-      url: `${DEVELOPER_BASE}/apps/${clientId}`,
-      method: 'PATCH',
-      data,
-    });
-    return mapAppToOAuth(response);
-  },
-
-  deleteOAuthApplication: async (clientId: string): Promise<void> => {
-    await request<{ id: string; deleted: boolean }>({
-      url: `${DEVELOPER_BASE}/apps/${clientId}`,
-      method: 'DELETE',
-    });
-  },
-
-  regenerateClientSecret: async (clientId: string): Promise<{ client_secret: string }> =>
-    request<{ client_secret: string }>({
-      url: `${DEVELOPER_BASE}/apps/${clientId}/regenerate-secret`,
-      method: 'POST',
-    }),
-
-  authorize: async (params: {
-    client_id: string;
-    redirect_uri: string;
-    response_type: string;
-    scope: string;
-    state?: string;
-  }): Promise<OAuthAuthorizationRequest> =>
-    request<OAuthAuthorizationRequest>({
-      url: '/oauth/authorize',
-      method: 'GET',
-      params,
-    }),
-
-  approveAuthorizationRequest: async (params: {
-    client_id: string;
-    redirect_uri: string;
-    response_type: string;
-    scope: string;
-    state?: string;
-  }): Promise<OAuthAuthorizationApproval> =>
-    request<OAuthAuthorizationApproval>({
-      url: '/oauth/authorize',
-      method: 'POST',
-      params,
-      data: { confirm: true },
-    }),
-
-  exchangeCodeForToken: async (data: {
-    client_id: string;
-    client_secret: string;
-    code: string;
-    redirect_uri: string;
-    grant_type: string;
-  }): Promise<OAuthToken> => request<OAuthToken>({ url: '/oauth/token', method: 'POST', data }),
-
-  refreshToken: async (data: {
-    client_id: string;
-    client_secret: string;
-    refresh_token: string;
-    grant_type: string;
-  }): Promise<OAuthToken> => request<OAuthToken>({ url: '/oauth/token', method: 'POST', data }),
-
   getApiDocumentation: async (): Promise<ApiDocumentation> => ({
     version: 'backend-source',
     base_url: getBaseUrl(),
     authentication: {
-      type: 'oauth',
-      description: 'Use developer applications or OAuth client credentials supported by the backend.',
+      type: 'api_key',
+      description: 'Use developer API keys or server-to-server credentials supported by the backend.',
     },
     endpoints: [
+      {
+        path: '/api/v1/developer/register',
+        method: 'POST',
+        description: 'Register a new developer profile.',
+        response: { status: 201, schema: { type: 'object' } },
+      },
       {
         path: '/api/v1/developer/apps',
         method: 'GET',
@@ -446,12 +328,6 @@ export const developerApi = {
         method: 'POST',
         description: 'Rotate a developer application client secret.',
         response: { status: 200, schema: { type: 'object' } },
-      },
-      {
-        path: '/api/v1/developer/marketplace',
-        method: 'GET',
-        description: 'List approved marketplace applications.',
-        response: { status: 200, schema: { type: 'array' } },
       },
       {
         path: '/api/v1/developer/webhooks',
@@ -502,16 +378,10 @@ export const developerApi = {
         response: { status: 200, schema: { type: 'object' } },
       },
       {
-        path: '/oauth/authorize',
+        path: '/api/v1/developer/marketplace',
         method: 'GET',
-        description: 'Start the OAuth authorization flow.',
-        response: { status: 302, schema: { type: 'redirect' } },
-      },
-      {
-        path: '/oauth/token',
-        method: 'POST',
-        description: 'Exchange authorization codes or refresh tokens.',
-        response: { status: 200, schema: { type: 'object' } },
+        description: 'Browse the approved integration marketplace.',
+        response: { status: 200, schema: { type: 'array' } },
       },
     ],
   }),

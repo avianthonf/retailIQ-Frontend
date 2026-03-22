@@ -1,30 +1,25 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
-import {
-  exploreV2Inventory,
-  exploreV2Sales,
-  getDeveloperMarketplace,
-  registerDeveloperProfile,
-  type DeveloperRegistrationRequest,
-} from '@/api/developerExtras';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { developerExtrasApi, type DeveloperRegistrationRequest } from '@/api/developerExtras';
+
+export const developerExtrasKeys = {
+  all: ['developer-extras'] as const,
+  marketplace: () => [...developerExtrasKeys.all, 'marketplace'] as const,
+};
 
 export const useDeveloperMarketplaceQuery = () =>
   useQuery({
-    queryKey: ['developer', 'marketplace'],
-    queryFn: getDeveloperMarketplace,
-    staleTime: 300_000,
+    queryKey: developerExtrasKeys.marketplace(),
+    queryFn: () => developerExtrasApi.getMarketplace(),
+    staleTime: 300000,
   });
 
-export const useRegisterDeveloperMutation = () =>
-  useMutation({
-    mutationFn: (data: DeveloperRegistrationRequest) => registerDeveloperProfile(data),
-  });
+export const useRegisterDeveloperMutation = () => {
+  const queryClient = useQueryClient();
 
-export const useDeveloperV2InventoryMutation = () =>
-  useMutation({
-    mutationFn: ({ oauthToken, storeId }: { oauthToken: string; storeId: string }) => exploreV2Inventory(oauthToken, storeId),
+  return useMutation({
+    mutationFn: (data: DeveloperRegistrationRequest) => developerExtrasApi.registerDeveloper(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: developerExtrasKeys.marketplace() });
+    },
   });
-
-export const useDeveloperV2SalesMutation = () =>
-  useMutation({
-    mutationFn: ({ oauthToken, storeId }: { oauthToken: string; storeId: string }) => exploreV2Sales(oauthToken, storeId),
-  });
+};

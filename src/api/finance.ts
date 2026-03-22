@@ -167,12 +167,6 @@ interface RawLedgerEntry {
   created_at?: string;
 }
 
-interface RawPaymentTransaction {
-  payment_id?: string | number;
-  status?: string;
-  net_amount?: number;
-}
-
 const nowIso = () => new Date().toISOString();
 
 const mapKycStatus = (status?: string): KYCRecord['status'] => {
@@ -328,26 +322,6 @@ export const financeApi = {
           balance_after: Number(entry.amount ?? 0),
         }))
       : [];
-  },
-
-  repayCredit: async (amount: number): Promise<CreditTransaction> => {
-    const response = await request<RawPaymentTransaction>({
-      url: `${FINANCE_BASE}/payments/process`,
-      method: 'POST',
-      data: {
-        amount,
-        payment_method: 'BANK_TRANSFER',
-      },
-    });
-
-    return {
-      id: String(response.payment_id ?? `payment-${Date.now()}`),
-      type: 'PAYMENT',
-      amount: Number(response.net_amount ?? amount),
-      description: 'Merchant payment processed',
-      created_at: nowIso(),
-      balance_after: 0,
-    };
   },
 
   getLoanProducts: async (): Promise<LoanProduct[]> => [],
@@ -525,28 +499,4 @@ export const financeApi = {
       : [];
   },
 
-  processPayment: async (data: {
-    amount: number;
-    method: string;
-    reference?: string;
-  }): Promise<TreasuryTransaction> => {
-    const response = await request<RawPaymentTransaction>({
-      url: `${FINANCE_BASE}/payments/process`,
-      method: 'POST',
-      data: {
-        amount: data.amount,
-        payment_method: data.method,
-      },
-    });
-
-    return {
-      id: String(response.payment_id ?? `payment-${Date.now()}`),
-      type: 'PAYMENT',
-      amount: Number(response.net_amount ?? data.amount),
-      description: data.reference ? `Payment ${data.reference}` : 'Payment processed',
-      status: response.status === 'FAILED' ? 'FAILED' : 'COMPLETED',
-      created_at: nowIso(),
-      completed_at: nowIso(),
-    };
-  },
 };
