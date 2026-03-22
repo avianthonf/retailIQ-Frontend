@@ -5,7 +5,6 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import LoginPage from '@/pages/Login';
 import RegisterPage from '@/pages/Register';
-import VerifyOtpPage from '@/pages/VerifyOtp';
 
 const mocks = vi.hoisted(() => ({
   addToast: vi.fn(),
@@ -32,7 +31,7 @@ vi.mock('@/utils/session', () => ({
   persistAuthTokens: vi.fn(),
 }));
 
-const OTP_DELIVERY_RECOVERY_MESSAGE = 'We could not send the verification email right now. Please try again from the next screen.';
+const OTP_DELIVERY_FAILURE_MESSAGE = 'Unable to send verification email right now. Registration was not completed. Please try again.';
 
 describe('verification email recovery', () => {
   beforeEach(() => {
@@ -40,10 +39,10 @@ describe('verification email recovery', () => {
     vi.clearAllMocks();
   });
 
-  it('moves registration failures caused by email delivery into the OTP flow', async () => {
+  it('keeps registration on the form when email delivery fails', async () => {
     mocks.registerMutateAsync.mockRejectedValue({
       status: 503,
-      message: 'Unable to send verification email right now. Please try again later.',
+      message: OTP_DELIVERY_FAILURE_MESSAGE,
     });
 
     const user = userEvent.setup();
@@ -52,7 +51,6 @@ describe('verification email recovery', () => {
       <MemoryRouter initialEntries={['/register']}>
         <Routes>
           <Route path="/register" element={<RegisterPage />} />
-          <Route path="/verify-otp" element={<VerifyOtpPage />} />
         </Routes>
       </MemoryRouter>,
     );
@@ -64,13 +62,13 @@ describe('verification email recovery', () => {
     await user.type(screen.getByLabelText(/^password$/i), 'password123');
     await user.click(screen.getByRole('button', { name: /create account/i }));
 
-    expect(await screen.findByText(OTP_DELIVERY_RECOVERY_MESSAGE)).toBeTruthy();
+    expect(await screen.findByText(OTP_DELIVERY_FAILURE_MESSAGE)).toBeTruthy();
     expect(screen.getByDisplayValue('ada@example.com')).toBeTruthy();
-    expect(mocks.clearSession).toHaveBeenCalled();
+    expect(mocks.clearSession).not.toHaveBeenCalled();
     expect(mocks.addToast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'warning' }));
   });
 
-  it('moves login failures caused by email delivery into the OTP flow', async () => {
+  it('keeps login on the form when email delivery fails', async () => {
     mocks.loginMutateAsync.mockRejectedValue({
       status: 503,
       message: 'Unable to send verification email right now. Please try again later.',
@@ -82,7 +80,6 @@ describe('verification email recovery', () => {
       <MemoryRouter initialEntries={['/login?redirect=%2Fdashboard']}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/verify-otp" element={<VerifyOtpPage />} />
         </Routes>
       </MemoryRouter>,
     );
@@ -90,7 +87,7 @@ describe('verification email recovery', () => {
     await user.type(screen.getByLabelText(/email address/i), 'signin@example.com');
     await user.click(screen.getByRole('button', { name: /send otp/i }));
 
-    expect(await screen.findByText(OTP_DELIVERY_RECOVERY_MESSAGE)).toBeTruthy();
+    expect(await screen.findByText('Unable to send verification email right now. Please try again later.')).toBeTruthy();
     expect(screen.getByDisplayValue('signin@example.com')).toBeTruthy();
     expect(mocks.addToast).toHaveBeenCalledWith(expect.objectContaining({ variant: 'warning' }));
   });

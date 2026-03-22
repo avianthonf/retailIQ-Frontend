@@ -15,8 +15,6 @@ import { extractFieldErrors } from '@/utils/errors';
 import { uiStore } from '@/stores/uiStore';
 import { clearSession } from '@/utils/session';
 
-const OTP_DELIVERY_RECOVERY_MESSAGE = 'We could not send the verification email right now. Please try again from the next screen.';
-
 export default function RegisterPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -58,19 +56,11 @@ export default function RegisterPage() {
     } catch (error) {
       const apiError = normalizeApiError(error);
       if (apiError.status === 503) {
-        const otpPath = `/verify-otp?email=${encodeURIComponent(values.email)}&redirect=${encodeURIComponent(redirect)}`;
-        clearSession();
+        setServerMessage(apiError.message);
         addToast({
-          title: 'Account created',
-          message: OTP_DELIVERY_RECOVERY_MESSAGE,
+          title: 'Verification email unavailable',
+          message: apiError.message,
           variant: 'warning',
-        });
-        navigate(otpPath, {
-          replace: true,
-          state: {
-            email: values.email,
-            notice: OTP_DELIVERY_RECOVERY_MESSAGE,
-          },
         });
         return;
       }
